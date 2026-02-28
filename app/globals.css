@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-primary: #E8721A;
+  --brand-bg: #FFF8F3;
+  --text-primary: #1A1815;
+  --text-secondary: #4A4641;
+  --text-muted: #78746C;
+  --border-default: #E8E6E1;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: #FFF8F3;
+    color: #1A1815;
+    font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5 {
+    font-family: 'Outfit', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+}
+
+@layer utilities {
+  /* 暖光阴影 — CTA 按钮专用 */
+  .shadow-warm {
+    box-shadow: 0 4px 24px rgba(232, 114, 26, 0.25);
+  }
+  .shadow-warm-lg {
+    box-shadow: 0 6px 32px rgba(232, 114, 26, 0.35);
+  }
+
+  /* 文字截断 */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F4F3F0;
+}
+::-webkit-scrollbar-thumb {
+  background: #D1CEC7;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A49C;
+}

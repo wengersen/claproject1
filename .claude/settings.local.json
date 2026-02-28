@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm install next@latest)",
+      "Bash(npm run build)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(echo $ANTHROPIC_API_KEY)",
+      "Bash(npm uninstall @anthropic-ai/sdk)",
+      "Bash(npm install openai)",
+      "Bash(git init)",
+      "Bash(git add .)",
+      "Bash(git commit -m \"Initial NutraPaw MVP - Next.js + DeepSeek API\")"
+    ]
+  }
+}
