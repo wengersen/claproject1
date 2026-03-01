@@ -31,12 +31,14 @@ export interface LoginRequest {
 
 /**
  * 认证响应（含 JWT token）
+ * passwordHash 仅在注册响应中存在，用于客户端持久化凭证（跨 Vercel Redeploy 免重注册）
  */
 export interface AuthResponse {
   success: boolean
   user: Omit<User, 'passwordHash'>
   sessionToken: string
   expiresIn: number // 秒数，通常是 7 天 = 604800
+  passwordHash?: string // 注册时返回，供客户端存入 nutrapaw_user_auth
 }
 
 /**

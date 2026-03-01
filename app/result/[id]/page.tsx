@@ -11,7 +11,7 @@ import { LoginModal } from '@/components/auth/LoginModal'
 import { HEALTH_TAG_CONFIG, type RecommendResult, type ProductRecommendation } from '@/types/cat'
 import type { AuthResponse } from '@/types/auth'
 import type { Pet } from '@/types/pet'
-import { savePet, generateId } from '@/lib/petLocalStore'
+import { getPets, savePet, generateId } from '@/lib/petLocalStore'
 
 type AuthModal = 'signup' | 'login' | null
 type PetAddStatus = 'idle' | 'added' | 'error'
@@ -104,6 +104,21 @@ export default function ResultPage() {
     setSaveStatus('idle')
   }
 
+  // 当 result 加载后，检查是否已有关联此 resultId 的宠物档案（防止刷新后重复添加）
+  useEffect(() => {
+    if (!result) return
+    const userStr = localStorage.getItem('user')
+    if (!userStr) return
+    try {
+      const { username } = JSON.parse(userStr) as { username: string }
+      const found = getPets(username).find((p) => p.resultId === result.id)
+      if (found) {
+        setAddedPetId(found.id)
+        setPetAddStatus('added')
+      }
+    } catch { /* ignore */ }
+  }, [result])
+
   function handleAddToPetProfile() {
     if (!result) return
     // 检查登录状态（需要 username 作为 localStorage 分区 key）
@@ -115,6 +130,16 @@ export default function ResultPage() {
     try {
       const parsedUser = JSON.parse(userStr) as { username: string }
       const { catProfile } = result
+      // 去重：检查同名或同 resultId 的宠物是否已存在
+      const existingPets = getPets(parsedUser.username)
+      const duplicate = existingPets.find(
+        (p) => p.resultId === result.id || p.name === catProfile.name
+      )
+      if (duplicate) {
+        setAddedPetId(duplicate.id)
+        setPetAddStatus('added')
+        return
+      }
       const now = new Date().toISOString()
       const newPet: Pet = {
         id: generateId(),

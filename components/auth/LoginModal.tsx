@@ -22,10 +22,32 @@ export function LoginModal({ onSuccess, onSwitchToSignup, onClose }: LoginModalP
     setLoading(true)
 
     try {
+      // 读取本地凭证（若存在且用户名匹配，附加 clientHash 绕过服务端 Map 查询）
+      // 这样即使 Vercel Redeploy 清空了服务端内存，登录依然可以成功
+      let authExtra: Record<string, string> = {}
+      try {
+        const stored = localStorage.getItem('nutrapaw_user_auth')
+        if (stored) {
+          const auth = JSON.parse(stored) as {
+            id: string; username: string; email: string
+            nickname: string; passwordHash: string; createdAt: string
+          }
+          if (auth.username === username) {
+            authExtra = {
+              clientHash: auth.passwordHash,
+              clientId: auth.id,
+              clientNickname: auth.nickname,
+              clientEmail: auth.email,
+              clientCreatedAt: auth.createdAt,
+            }
+          }
+        }
+      } catch { /* ignore, fall back to server-side Map */ }
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, ...authExtra }),
       })
 
       const data = await res.json()

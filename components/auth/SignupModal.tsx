@@ -37,9 +37,22 @@ export function SignupModal({ onSuccess, onSwitchToLogin, onClose }: SignupModal
         return
       }
 
-      // 保存 sessionToken 到 localStorage
+      // 保存 sessionToken + user 到 localStorage
       localStorage.setItem('sessionToken', data.sessionToken)
       localStorage.setItem('user', JSON.stringify(data.user))
+
+      // 保存凭证到 localStorage（用于跨 Vercel Redeploy 免重注册）
+      // clientHash 下次登录时传给服务端做 bcrypt.compare，无需服务端 Map
+      if (data.passwordHash) {
+        localStorage.setItem('nutrapaw_user_auth', JSON.stringify({
+          id: data.user.id,
+          username: data.user.username,
+          email: data.user.email,
+          nickname: data.user.nickname ?? data.user.username,
+          passwordHash: data.passwordHash,
+          createdAt: data.user.createdAt,
+        }))
+      }
 
       onSuccess(data as AuthResponse)
     } catch {

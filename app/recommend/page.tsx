@@ -11,6 +11,8 @@ import { LoadingState } from '@/components/recommend/LoadingState'
 import { AuthNav } from '@/components/auth/AuthNav'
 import { inferLifeStage, type HealthTag, type CatProfile } from '@/types/cat'
 import { generateResultId } from '@/lib/formatters'
+import { getPets } from '@/lib/petLocalStore'
+import type { Pet } from '@/types/pet'
 
 // ─── 类型 ────────────────────────────────────────────────
 interface FormState {
@@ -70,6 +72,7 @@ export default function RecommendPage() {
   const [step2From, setStep2From] = useState<'step0' | 'step1'>('step1')
   const [initializing, setInitializing] = useState(true)
   const [lastSession, setLastSession] = useState<LastCatSession | null>(null)
+  const [savedPets, setSavedPets] = useState<Pet[]>([])
   const [hadHistoryHealth, setHadHistoryHealth] = useState(false)
 
   const [form, setForm] = useState<FormState>({
@@ -79,12 +82,24 @@ export default function RecommendPage() {
   const [customInput, setCustomInput] = useState('')
   const [error, setError] = useState('')
 
-  // 初始化：读取历史档案
+  // 初始化：读取历史档案（lastCatSession）+ 已登录用户的完整宠物列表
   useEffect(() => {
     const session = readSession()
     if (session) {
       setLastSession(session)
       setStep(0)
+    }
+    // 登录用户：读取 nutrapaw_pets_${username} 完整列表（可能有多只猫）
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        const { username } = JSON.parse(userStr) as { username: string }
+        const pets = getPets(username)
+        if (pets.length > 0) {
+          setSavedPets(pets)
+          setStep(0)  // 有宠物档案就显示 Step 0 选择界面
+        }
+      } catch { /* ignore */ }
     }
     setInitializing(false)
   }, [])
@@ -108,6 +123,32 @@ export default function RecommendPage() {
     setHadHistoryHealth(hasPrevHealth)
     setHealthTags(lastSession.healthTags ?? [])
     setCustomInput(lastSession.customInput ?? '')
+    setStep2From('step0')
+    setStep(2)
+  }
+
+  // Step 0 → Step 2：从宠物档案选择一只猫（直接到健康需求）
+  function selectSavedPet(pet: Pet) {
+    setForm({
+      name: pet.name,
+      breed: pet.breed,
+      ageMonths: String(pet.ageMonths),
+      weightKg: String(pet.weightKg),
+      gender: pet.gender,
+      neutered: pet.neutered,
+    })
+    // 若 lastCatSession 对应同一只猫，恢复上次的健康需求
+    const lastSess = readSession()
+    if (lastSess?.name === pet.name) {
+      const hasPrevHealth = (lastSess.healthTags?.length ?? 0) > 0
+      setHadHistoryHealth(hasPrevHealth)
+      setHealthTags(lastSess.healthTags ?? [])
+      setCustomInput(lastSess.customInput ?? '')
+    } else {
+      setHadHistoryHealth(false)
+      setHealthTags([])
+      setCustomInput('')
+    }
     setStep2From('step0')
     setStep(2)
   }
@@ -217,41 +258,79 @@ export default function RecommendPage() {
         )}
 
         {/* ── Step 0：猫咪快捷选择 ── */}
-        {!initializing && step === 0 && lastSession && (
+        {!initializing && step === 0 && (savedPets.length > 0 || lastSession) && (
           <div className="animate-slide-up space-y-5">
             <div>
-              <h1 className="text-[28px] font-bold text-[#1A1815]">继续上次的推荐？</h1>
+              <h1 className="text-[28px] font-bold text-[#1A1815]">
+                {savedPets.length > 0 ? '为哪只猫咪生成推荐？' : '继续上次的推荐？'}
+              </h1>
               <p className="text-[14px] text-[#78746C] mt-2">选择已有档案，直接跳到健康需求选择</p>
             </div>
 
-            {/* 历史猫咪卡片 */}
-            <button
-              type="button"
-              onClick={continueWithLast}
-              className="w-full bg-white border-2 border-[#E8E6E1] hover:border-[#E8721A] hover:bg-[#FFF8F3] rounded-2xl p-6 text-left transition-all duration-150 group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-[#FFD9B5] rounded-full flex items-center justify-center text-2xl shrink-0">
-                  🐱
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[18px] font-bold text-[#1A1815] group-hover:text-[#E8721A] transition-colors">
-                    {lastSession.name}
-                  </p>
-                  <p className="text-[13px] text-[#78746C] mt-0.5 truncate">
-                    {[
-                      lastSession.breed,
-                      formatAge(lastSession.ageMonths),
-                      lastSession.weightKg ? `${lastSession.weightKg}kg` : '',
-                      lastSession.gender === 'male' ? '公猫' : lastSession.gender === 'female' ? '母猫' : '',
-                    ].filter(Boolean).join(' · ')}
-                  </p>
-                </div>
-                <span className="text-[14px] font-medium text-[#E8721A] shrink-0 group-hover:translate-x-1 transition-transform">
-                  继续使用 →
-                </span>
+            {/* 已登录且有宠物档案：显示全部猫咪卡片 */}
+            {savedPets.length > 0 ? (
+              <div className="space-y-3">
+                {savedPets.map((pet) => (
+                  <button
+                    key={pet.id}
+                    type="button"
+                    onClick={() => selectSavedPet(pet)}
+                    className="w-full bg-white border-2 border-[#E8E6E1] hover:border-[#E8721A] hover:bg-[#FFF8F3] rounded-2xl p-6 text-left transition-all duration-150 group"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 bg-[#FFD9B5] rounded-full flex items-center justify-center text-2xl shrink-0">
+                        🐱
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[18px] font-bold text-[#1A1815] group-hover:text-[#E8721A] transition-colors">
+                          {pet.name}
+                        </p>
+                        <p className="text-[13px] text-[#78746C] mt-0.5 truncate">
+                          {[
+                            pet.breed,
+                            formatAge(String(pet.ageMonths)),
+                            `${pet.weightKg}kg`,
+                            pet.gender === 'male' ? '公猫' : '母猫',
+                          ].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <span className="text-[14px] font-medium text-[#E8721A] shrink-0 group-hover:translate-x-1 transition-transform">
+                        选择 →
+                      </span>
+                    </div>
+                  </button>
+                ))}
               </div>
-            </button>
+            ) : lastSession ? (
+              /* 未登录或无档案：显示原有单猫 lastSession 卡片 */
+              <button
+                type="button"
+                onClick={continueWithLast}
+                className="w-full bg-white border-2 border-[#E8E6E1] hover:border-[#E8721A] hover:bg-[#FFF8F3] rounded-2xl p-6 text-left transition-all duration-150 group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-[#FFD9B5] rounded-full flex items-center justify-center text-2xl shrink-0">
+                    🐱
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[18px] font-bold text-[#1A1815] group-hover:text-[#E8721A] transition-colors">
+                      {lastSession.name}
+                    </p>
+                    <p className="text-[13px] text-[#78746C] mt-0.5 truncate">
+                      {[
+                        lastSession.breed,
+                        formatAge(lastSession.ageMonths),
+                        lastSession.weightKg ? `${lastSession.weightKg}kg` : '',
+                        lastSession.gender === 'male' ? '公猫' : lastSession.gender === 'female' ? '母猫' : '',
+                      ].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <span className="text-[14px] font-medium text-[#E8721A] shrink-0 group-hover:translate-x-1 transition-transform">
+                    继续使用 →
+                  </span>
+                </div>
+              </button>
+            ) : null}
 
             {/* 添加新猫咪 */}
             <button
@@ -267,8 +346,8 @@ export default function RecommendPage() {
         {/* ── Step 1：基本信息 ── */}
         {!initializing && step === 1 && (
           <div className="animate-slide-up space-y-8">
-            {/* 有历史档案时显示返回链接 */}
-            {lastSession && (
+            {/* 有历史档案或宠物档案时显示返回链接 */}
+            {(lastSession || savedPets.length > 0) && (
               <button
                 type="button"
                 onClick={() => setStep(0)}
