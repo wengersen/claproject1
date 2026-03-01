@@ -121,8 +121,10 @@ class RecommendCache {
 export const recommendCache = new RecommendCache()
 
 // 定期清理过期缓存（每 5 分钟一次）
-if (typeof global !== 'undefined' && !global._cacheCleanupInterval) {
-  global._cacheCleanupInterval = setInterval(() => {
+// 使用模块级变量避免 TypeScript 严格模式下 globalThis 索引签名报错
+let _cleanupInterval: ReturnType<typeof setInterval> | null = null
+if (!_cleanupInterval) {
+  _cleanupInterval = setInterval(() => {
     recommendCache.cleanupExpired()
   }, 5 * 60 * 1000)
 }
