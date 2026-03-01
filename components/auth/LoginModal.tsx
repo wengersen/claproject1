@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { AuthResponse } from '@/types/auth'
 
 interface LoginModalProps {
@@ -46,14 +47,14 @@ export function LoginModal({ onSuccess, onSwitchToSignup, onClose }: LoginModalP
     }
   }
 
-  return (
-    // 遮罩层
+  const modal = (
+    // 遮罩层 —— 通过 createPortal 挂到 body，避免 nav backdrop-blur 破坏 fixed 定位
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* 弹窗主体 */}
-      <div className="bg-white rounded-3xl shadow-xl w-full max-w-[420px] p-8 relative animate-slide-up">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-8 relative animate-slide-up">
         {/* 关闭按钮 */}
         <button
           onClick={onClose}
@@ -137,4 +138,6 @@ export function LoginModal({ onSuccess, onSwitchToSignup, onClose }: LoginModalP
       </div>
     </div>
   )
+
+  return createPortal(modal, document.body)
 }
