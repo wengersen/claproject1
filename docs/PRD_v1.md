@@ -363,8 +363,104 @@ interface CatFood {
 
 ---
 
+---
+
+## 十四、全站导航认证状态（v1.2 新增）
+
+**背景：** 用户无法在首页和推荐页直接感知登录状态，登录/注册入口缺失。
+
+### 14.1 AuthNav 组件规格
+
+适用页面：**首页导航栏**、**推荐页顶部**
+
+| 状态 | 显示内容 |
+|------|---------|
+| 未登录 | 单按钮 `[登录/注册]`（橙色描边样式） |
+| 已登录 | `🐾 昵称/用户名`（链接至 /profile） + `退出` 文字按钮 |
+
+**点击"登录/注册"：**
+- 打开统一 Auth 弹窗，**默认展示登录表单**
+- 弹窗内"还没有账号？注册"→ 切换注册表单
+- 注册表单内"已有账号？登录"→ 切回登录表单
+
+---
+
+## 十五、推荐流程猫咪档案记忆（v1.2 新增）
+
+**背景：** 用户每次推荐都需重新填写猫咪信息；已有历史时应提供快捷入口。
+
+### 15.1 本地持久化数据结构
+
+```
+localStorage key: 'lastCatSession'
+
+{
+  // 第一阶段：Step 1 → Step 2 时写入
+  name, breed, ageMonths, weightKg, gender, neutered,
+  // 第二阶段：点击生成推荐时追加（保留历史健康上下文）
+  healthTags: HealthTag[],
+  customInput: string
+}
+```
+
+写入时机：
+- **猫咪信息**：Step 1 → Step 2 时，合并写入（保留已有 healthTags/customInput）
+- **健康需求**：点击"生成推荐"前，追加写入 healthTags + customInput
+
+### 15.2 推荐页完整状态机
+
+```
+进入 /recommend（初始化读取 localStorage）
+  ├─ lastCatSession 存在且 name+breed 有值 → Step 0
+  └─ 不存在 → Step 1（直接开始填写）
+
+Step 0  猫咪快捷选择（不显示进度条）
+  ├─ 卡片：猫名 · 品种 · 年龄 · 体重 · 性别 · 绝育状态（只读）
+  ├─ [继续使用 →] → 预填 form/healthTags/customInput → Step 2
+  └─ [+ 添加新猫咪] → 清空所有状态 → Step 1
+
+Step 1  基本信息（进度条 Step 1）
+  ├─ 若有 lastCatSession：顶部显示"← 返回已有猫咪档案"→ Step 0
+  └─ [下一步] → 合并写入 localStorage → Step 2
+
+Step 2  健康需求（进度条 Step 2）
+  ├─ 顶部只读猫咪摘要卡（品种/年龄/体重/性别）
+  ├─ 若来自 Step 0 且有历史健康需求：
+  │   提示横幅"已加载上次的健康需求，请确认是否有变化"
+  │   预填 healthTags（可增减）+ 预填 customInput（可修改）
+  ├─ [← 返回] → 来自 Step 0 ? Step 0 : Step 1
+  └─ [✨ 直接推荐] → 追加写入 localStorage → 调用 API
+
+Step 3  Loading（进度条 Step 3，现有逻辑不变）
+```
+
+### 15.3 进度条规则
+
+| Step | 进度条 | currentStep |
+|------|--------|-------------|
+| 0（猫咪选择） | ❌ 隐藏 | — |
+| 1（基本信息） | ✅ | 1 |
+| 2（健康需求） | ✅ | 2 |
+| 3（生成中）   | ✅ | 3 |
+
+### 15.4 UI 设计规范
+
+与现有设计系统严格保持一致：
+
+| 元素 | 样式规范 |
+|------|---------|
+| Step 0 历史猫咪卡片 | `bg-white border-2 border-[#E8E6E1]`，hover: `border-[#E8721A] bg-[#FFF8F3]`，`rounded-2xl` |
+| Step 0 新猫咪按钮 | `border-2 border-dashed border-[#E8E6E1]`，hover: `border-[#FFB87A]` |
+| Step 2 猫咪摘要卡 | `bg-[#FFF8F3] border border-[#FFD9B5] rounded-xl`（与已选标签汇总卡一致） |
+| Step 2 历史需求提示 | `bg-[#FFF8F3] border border-[#FFD9B5] rounded-xl`，前缀 🔔 |
+| AuthNav 未登录按钮 | `border border-[#E8721A] text-[#E8721A]`，hover 填充橙色 |
+| AuthNav 已登录 | 头像 `bg-[#FFD9B5]` 圆圈，用户名 `text-[#78746C]`，退出 `text-[#A8A49C]` |
+
+---
+
 *v1.0 — 2026-02-28 初始发布*
 *v1.1 — 2026-03-01 新增用户认证系统 + 推荐缓存优化*
+*v1.2 — 2026-03-01 新增全站 AuthNav + 推荐流程猫咪档案记忆*
 
 ---
 

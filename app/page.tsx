@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { AuthNav } from '@/components/auth/AuthNav'
 
 export default function HomePage() {
   return (
@@ -17,6 +18,7 @@ export default function HomePage() {
             >
               了解更多
             </Link>
+            <AuthNav />
             <Link
               href="/recommend"
               className="bg-[#E8721A] text-white px-5 py-2.5 rounded-xl text-[14px] font-semibold shadow-warm hover:bg-[#C45C0A] hover:-translate-y-px transition-all duration-150"
