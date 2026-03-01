@@ -461,6 +461,108 @@ Step 3  Loading（进度条 Step 3，现有逻辑不变）
 *v1.0 — 2026-02-28 初始发布*
 *v1.1 — 2026-03-01 新增用户认证系统 + 推荐缓存优化*
 *v1.2 — 2026-03-01 新增全站 AuthNav + 推荐流程猫咪档案记忆*
+*v1.3 — 2026-03-01 新增宠物健康日志系统 + AI 健康评估*
+
+---
+
+## 十六、宠物健康日志系统（v1.3 新增）
+
+**背景：** 单次推荐解决"现在买什么"，健康日志解决"长期方向对不对"。用户需要量化依据来判断猫咪健康趋势，支持喂养决策调整。
+
+### 16.1 核心数据模型
+
+#### Pet（宠物档案，持久实体）
+
+```
+Pet {
+  id: UUID
+  userId: string
+  name, breed, gender, neutered, ageMonths, weightKg（基准）
+  createdAt, updatedAt
+}
+```
+
+#### PetHealthLog（周期性健康记录）
+
+```
+PetHealthLog {
+  id: UUID
+  petId, userId
+  date: YYYY-MM-DD（同一天只允许一条）
+  weightKg?: number（可选，非每次都称重）
+  appetite: excellent|normal|poor
+  energy: active|normal|lethargic
+  drinking: lots|normal|little
+  stool: normal|loose|hard|no_info
+  vomiting: none|occasional|frequent
+  notes?: string（自由文字备注）
+  createdAt
+}
+```
+
+#### HealthAssessment（AI 健康评估，带缓存）
+
+```
+HealthAssessment {
+  id: UUID
+  petId
+  generatedAt, expiresAt（缓存 48h）
+  basedOnLogs: number（使用了几条记录）
+  overallStatus: excellent|good|attention|concern
+  summary: string（一句话总结）
+  keyFindings: string[]（2-3条）
+  dietaryAdvice: string（饮食建议）
+  careTips: string[]（护理注意事项）
+}
+```
+
+### 16.2 用户交互流程
+
+```
+推荐结果页（已登录）
+  → 出现「将 [猫名] 加入我的健康档案」横幅
+  → 点击后一键创建 Pet，跳转至宠物档案页
+
+个人档案页（/profile）新增「我的猫咪」区块
+  → 显示每只猫状态卡：名字/品种/最近记录/健康状态色
+  → [+ 添加猫咪] 入口
+
+宠物健康档案页（/profile/pets/[petId]）
+  ├─ 基本信息卡（只读）
+  ├─ [+ 记录今日状况] 按钮 → 弹出 LogEntryModal
+  ├─ AI 健康评估卡（用户点击「生成评估」触发，缓存 48h）
+  └─ 历史日志时间线（倒序）
+```
+
+### 16.3 AI 评估规格
+
+- **触发方式：** 用户主动点击「生成/刷新健康评估」按钮
+- **最低数据量：** 1 条日志即可生成（提示「数据越多越准确」）
+- **缓存策略：** 48h 有效，过期后需重新点击触发
+- **模型：** DeepSeek API，JSON 格式返回
+- **日志上限：** 最近 10 条记录参与评估
+
+### 16.4 API 端点
+
+```
+GET  /api/pets                      → 当前用户的所有宠物
+POST /api/pets                      → 创建宠物
+GET  /api/pets/[petId]/logs         → 该宠物日志（倒序）
+POST /api/pets/[petId]/logs         → 添加日志记录
+POST /api/pets/[petId]/assessment   → 触发 AI 评估（缓存 48h）
+```
+
+### 16.5 UI 设计规范（沿用设计系统）
+
+| 元素 | 样式 |
+|------|------|
+| 宠物卡片（Profile 页） | `bg-white border border-[#E8E6E1] rounded-2xl`，hover 提升阴影 |
+| 状态色：良好 | `text-green-600 bg-green-50` |
+| 状态色：需关注 | `text-amber-600 bg-amber-50` |
+| 状态色：建议就医 | `text-red-600 bg-red-50` |
+| AI 评估卡 | `bg-[#FFF8F3] border border-[#FFD9B5] rounded-2xl` |
+| 日志条目 | 左侧彩色圆点指示健康状态，右侧文字摘要 |
+| LogEntryModal | 复用 Modal 设计规范（createPortal + z-9999 + 蒙版）|
 
 ---
 

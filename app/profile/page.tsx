@@ -4,11 +4,17 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { StoredRecommendation } from '@/types/auth'
+import type { Pet } from '@/types/pet'
+import { AddPetModal } from '@/components/pets/AddPetModal'
 
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<{ username: string; nickname?: string; email?: string } | null>(null)
   const [recommendations, setRecommendations] = useState<StoredRecommendation[]>([])
+  const [pets, setPets] = useState<Pet[]>([])
+  const [petsLoading, setPetsLoading] = useState(true)
+  const [showAddPet, setShowAddPet] = useState(false)
+  const [sessionToken, setSessionToken] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,6 +28,21 @@ export default function ProfilePage() {
     } catch {
       router.push('/')
       return
+    }
+
+    // 保存 token 到 state
+    const token = localStorage.getItem('sessionToken') || ''
+    setSessionToken(token)
+
+    // 获取宠物列表
+    if (token) {
+      fetch('/api/pets', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : { pets: [] }))
+        .then((data) => setPets(data.pets ?? []))
+        .catch(() => {})
+        .finally(() => setPetsLoading(false))
+    } else {
+      setPetsLoading(false)
     }
 
     // 从 localStorage 读取所有保存的推荐结果
@@ -60,6 +81,19 @@ export default function ProfilePage() {
   function formatDate(dateStr: string) {
     const d = new Date(dateStr)
     return d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+  }
+
+  function getAgeStr(ageMonths: number): string {
+    const years = Math.floor(ageMonths / 12)
+    const months = ageMonths % 12
+    if (years === 0) return `${months}个月`
+    if (months === 0) return `${years}岁`
+    return `${years}岁${months}个月`
+  }
+
+  function handlePetAdded(pet: Pet) {
+    setPets((prev) => [pet, ...prev])
+    setShowAddPet(false)
   }
 
   if (loading) {
@@ -105,16 +139,80 @@ export default function ProfilePage() {
                 <p className="text-[13px] text-[#A8A49C] mt-0.5">{user.email}</p>
               )}
             </div>
-            <div className="ml-auto text-center">
-              <p className="text-[32px] font-mono font-bold text-[#E8721A]">
-                {recommendations.length}
-              </p>
-              <p className="text-[12px] text-[#A8A49C] uppercase tracking-wide">次推荐记录</p>
+            <div className="ml-auto flex gap-6 text-center">
+              <div>
+                <p className="text-[28px] font-mono font-bold text-[#E8721A]">{pets.length}</p>
+                <p className="text-[11px] text-[#A8A49C] uppercase tracking-wide">只猫咪</p>
+              </div>
+              <div>
+                <p className="text-[28px] font-mono font-bold text-[#E8721A]">{recommendations.length}</p>
+                <p className="text-[11px] text-[#A8A49C] uppercase tracking-wide">次推荐</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 推荐历史 */}
+        {/* ── 我的猫咪 ── */}
+        <section>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-[20px] font-bold text-[#1A1815]">我的猫咪</h2>
+            <button
+              onClick={() => setShowAddPet(true)}
+              className="text-[14px] text-[#E8721A] font-semibold hover:underline flex items-center gap-1"
+            >
+              + 添加猫咪
+            </button>
+          </div>
+
+          {petsLoading ? (
+            <div className="bg-white border border-[#E8E6E1] rounded-2xl p-8 flex justify-center">
+              <div className="text-2xl animate-paw-pulse">🐾</div>
+            </div>
+          ) : pets.length === 0 ? (
+            <div className="bg-white border border-[#E8E6E1] rounded-2xl p-10 text-center">
+              <div className="text-5xl mb-4">🐱</div>
+              <h3 className="text-[16px] font-semibold text-[#1A1815] mb-2">还没有猫咪档案</h3>
+              <p className="text-[13px] text-[#78746C] mb-5">
+                完成一次推荐后可一键加入档案，或点击下方手动创建
+              </p>
+              <button
+                onClick={() => setShowAddPet(true)}
+                className="inline-flex items-center gap-2 bg-[#E8721A] text-white px-5 py-2.5 rounded-xl text-[14px] font-semibold shadow-[0_4px_16px_rgba(232,114,26,0.2)] hover:bg-[#C45C0A] transition-colors"
+              >
+                + 创建档案
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pets.map((pet) => (
+                <Link
+                  key={pet.id}
+                  href={`/profile/pets/${pet.id}`}
+                  className="flex items-center gap-4 bg-white border border-[#E8E6E1] rounded-2xl p-5 hover:border-[#FFB87A] hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 group"
+                >
+                  <div className="w-12 h-12 bg-[#FFD9B5] rounded-full flex items-center justify-center text-2xl shrink-0">
+                    🐱
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[16px] font-semibold text-[#1A1815] group-hover:text-[#E8721A] transition-colors">
+                      {pet.name}
+                    </p>
+                    <p className="text-[13px] text-[#78746C] mt-0.5">
+                      {pet.breed} · {getAgeStr(pet.ageMonths)} · {pet.weightKg}kg ·{' '}
+                      {pet.gender === 'male' ? '公猫' : '母猫'} ·{' '}
+                      {pet.neutered ? '已绝育' : '未绝育'}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-[#E8721A] text-[14px] font-medium group-hover:underline">
+                    查看档案 →
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ── 推荐历史 ── */}
         <section>
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-[20px] font-bold text-[#1A1815]">推荐历史</h2>
@@ -183,6 +281,15 @@ export default function ProfilePage() {
           </Link>
         </div>
       </main>
+
+      {/* 添加猫咪弹窗 */}
+      {showAddPet && (
+        <AddPetModal
+          sessionToken={sessionToken}
+          onSuccess={handlePetAdded}
+          onClose={() => setShowAddPet(false)}
+        />
+      )}
     </div>
   )
 }

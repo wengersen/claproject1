@@ -12,6 +12,7 @@ import { HEALTH_TAG_CONFIG, type RecommendResult, type ProductRecommendation } f
 import type { AuthResponse } from '@/types/auth'
 
 type AuthModal = 'signup' | 'login' | null
+type PetAddStatus = 'idle' | 'adding' | 'added' | 'error'
 
 export default function ResultPage() {
   const params = useParams()
@@ -23,6 +24,8 @@ export default function ResultPage() {
   const [authModal, setAuthModal] = useState<AuthModal>(null)
   const [savedUser, setSavedUser] = useState<{ username: string; nickname?: string } | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [petAddStatus, setPetAddStatus] = useState<PetAddStatus>('idle')
+  const [addedPetId, setAddedPetId] = useState<string | null>(null)
 
   useEffect(() => {
     const id = params.id as string
@@ -97,6 +100,45 @@ export default function ResultPage() {
     localStorage.removeItem('user')
     setSavedUser(null)
     setSaveStatus('idle')
+  }
+
+  async function handleAddToPetProfile() {
+    if (!result) return
+    const { catProfile } = result
+    const token = localStorage.getItem('sessionToken')
+    if (!token) {
+      setAuthModal('login')
+      return
+    }
+    setPetAddStatus('adding')
+    try {
+      const res = await fetch('/api/pets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: catProfile.name,
+          breed: catProfile.breed,
+          gender: catProfile.gender,
+          neutered: catProfile.neutered,
+          ageMonths: catProfile.ageMonths,
+          weightKg: catProfile.weightKg,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.pet) {
+        setAddedPetId(data.pet.id as string)
+        setPetAddStatus('added')
+      } else {
+        setPetAddStatus('error')
+        setTimeout(() => setPetAddStatus('idle'), 4000)
+      }
+    } catch {
+      setPetAddStatus('error')
+      setTimeout(() => setPetAddStatus('idle'), 4000)
+    }
   }
 
   if (!result) {
@@ -215,6 +257,57 @@ export default function ResultPage() {
             </div>
           </div>
         </div>
+
+        {/* ── 加入健康档案横幅（已登录时显示） ── */}
+        {savedUser && petAddStatus === 'idle' && (
+          <div className="bg-gradient-to-r from-[#FFF8F3] to-[#FFD9B5]/40 border border-[#FFB87A] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-3 flex-1">
+              <span className="text-2xl shrink-0">📋</span>
+              <div>
+                <p className="text-[15px] font-semibold text-[#1A1815]">
+                  将 {catProfile.name} 加入健康档案
+                </p>
+                <p className="text-[13px] text-[#78746C] mt-0.5">
+                  定期记录健康状态，让 AI 追踪成长变化并给出专属建议
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleAddToPetProfile}
+              className="shrink-0 px-5 py-2.5 rounded-xl bg-[#E8721A] text-white text-[14px] font-semibold shadow-[0_4px_16px_rgba(232,114,26,0.2)] hover:bg-[#C45C0A] transition-all whitespace-nowrap"
+            >
+              加入档案 →
+            </button>
+          </div>
+        )}
+        {savedUser && petAddStatus === 'adding' && (
+          <div className="bg-[#FFF8F3] border border-[#FFB87A] rounded-2xl p-5 flex items-center gap-3">
+            <span className="text-xl animate-paw-pulse">🐾</span>
+            <p className="text-[14px] text-[#78746C]">正在创建健康档案...</p>
+          </div>
+        )}
+        {savedUser && petAddStatus === 'added' && addedPetId && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-3 flex-1">
+              <span className="text-xl">✅</span>
+              <p className="text-[14px] font-semibold text-green-700">
+                {catProfile.name} 已加入健康档案！现在可以开始记录日常状态了。
+              </p>
+            </div>
+            <a
+              href={`/profile/pets/${addedPetId}`}
+              className="shrink-0 px-4 py-2 rounded-xl border border-green-300 text-green-700 text-[13px] font-semibold hover:bg-green-100 transition-colors whitespace-nowrap"
+            >
+              去查看档案 →
+            </a>
+          </div>
+        )}
+        {savedUser && petAddStatus === 'error' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
+            <span className="text-amber-500 shrink-0">⚠️</span>
+            <p className="text-[13px] text-amber-700">加入档案失败，请稍后重试</p>
+          </div>
+        )}
 
         {/* 主粮推荐 */}
         {dryFood.length > 0 && (
