@@ -1,9 +1,21 @@
 # PRD_v1.md — 猫咪全生命周期营养顾问
 
-**版本：** v1.0
-**日期：** 2026-02-28
-**状态：** 待评审
+**版本：** v1.1
+**日期：** 2026-03-01
+**状态：** 正式发布
 **作者：** Requirement Agent × 用户共创
+
+---
+
+## 版本变更日志
+
+| 版本 | 日期 | 主要内容 |
+|------|------|---------|
+| v1.0 | 2026-02-28 | 初始 PRD，覆盖推荐流程核心功能 |
+| v1.1 | 2026-03-01 | 新增用户认证 + 推荐缓存优化（上线里程碑） |
+| v1.2 | 2026-03-01 | 全站 AuthNav + 推荐流程猫咪档案记忆 |
+| v1.3 | 2026-03-01 | 宠物健康日志系统 + AI 健康评估（localStorage 架构） |
+| **v1.1 里程碑** | **2026-03-01** | **3 大 Bug 修复：推荐历史多宠物同步、账号 Redeploy 持久化、档案重复去重** |
 
 ---
 
@@ -224,25 +236,31 @@ interface CatFood {
 
 | 层次 | 技术选择 | 理由 |
 |------|---------|------|
-| 前端框架 | Next.js 14 (App Router) | 项目现有栈 |
-| 语言 | TypeScript | 项目规范 |
+| 前端框架 | Next.js 16 (App Router) | 项目现有栈 |
+| 语言 | TypeScript（strict 模式） | 项目规范 |
 | 样式 | Tailwind CSS | 开发效率高 |
-| UI 风格 | Minimalist / Bento Grid | Design Agent 待详细输出 |
-| LLM | Claude API (claude-sonnet-4-6) | 中文理解强，推理能力好 |
-| 数据库（v1） | JSON 文件 + 内存索引 | 零成本，30-50款够用 |
-| 数据库（v2） | Supabase / PostgreSQL | 用户增长后迁移 |
-| 认证（可选） | NextAuth.js | 档案保存需要 |
-| 部署 | Vercel | 免费额度够 MVP |
+| UI 风格 | Minimalist / Bento Grid | DESIGN_v1.md 详细规范 |
+| LLM（推荐引擎） | DeepSeek API | 成本低、中文理解强 |
+| LLM（健康评估） | DeepSeek API | 同上，JSON 格式输出 |
+| 用户数据存储 | localStorage（客户端持久化） | 零成本、无服务端状态丢失风险 |
+| 猫粮数据库 | JSON 文件 + 内存索引（`lib/catFoodData.ts`） | 30-50款够用，零运维 |
+| 认证 | JWT + bcryptjs（自研，无第三方库依赖） | 轻量、完全控制 |
+| 部署 | Vercel（Serverless） | 免费额度够 MVP |
+| 数据库（v2 规划） | Supabase / PostgreSQL | 用户增长后迁移 |
 
 ### 7.2 页面路由规划
 
 ```
-/                    — 首页（产品介绍 + 开始按钮）
-/recommend           — 推荐流程（Step 1-3，单页多步骤）
-/result/[id]         — 推荐结果页（可分享）
-/profile             — 宠物档案页（需登录）
-/profile/[petId]     — 单只宠物档案详情
-/api/recommend       — 推荐接口（调用 LLM + 数据库）
+/                              — 首页（产品介绍 + 开始按钮）
+/recommend                     — 推荐流程（Step 0-3，单页多步骤）
+/result/[id]                   — 推荐结果页（可分享）
+/profile                       — 个人档案页（需登录，含我的猫咪列表）
+/profile/pets/[petId]          — 单只宠物健康档案页
+/api/recommend                 — 推荐接口（调用 DeepSeek + 猫粮数据库）
+/api/auth/signup               — 用户注册
+/api/auth/login                — 用户登录（支持 clientHash 无状态路径）
+/api/auth/logout               — 登出
+/api/pets/[petId]/assessment   — AI 健康评估（接受 pet+logs，DeepSeek 生成）
 ```
 
 ---
@@ -407,32 +425,53 @@ localStorage key: 'lastCatSession'
 - **猫咪信息**：Step 1 → Step 2 时，合并写入（保留已有 healthTags/customInput）
 - **健康需求**：点击"生成推荐"前，追加写入 healthTags + customInput
 
-### 15.2 推荐页完整状态机
+### 15.2 推荐页完整状态机（v1.1 里程碑更新）
 
 ```
 进入 /recommend（初始化读取 localStorage）
-  ├─ lastCatSession 存在且 name+breed 有值 → Step 0
-  └─ 不存在 → Step 1（直接开始填写）
+  ├─ 已登录用户（nutrapaw_pets_${username} 有宠物） → Step 0（多宠物模式）
+  ├─ 未登录 + lastCatSession 有值 → Step 0（单宠物模式）
+  └─ 无历史数据 → Step 1（直接开始填写）
 
 Step 0  猫咪快捷选择（不显示进度条）
-  ├─ 卡片：猫名 · 品种 · 年龄 · 体重 · 性别 · 绝育状态（只读）
-  ├─ [继续使用 →] → 预填 form/healthTags/customInput → Step 2
-  └─ [+ 添加新猫咪] → 清空所有状态 → Step 1
+  ├─ 【已登录，多宠物模式】：
+  │   H1：「为哪只猫咪生成推荐？」
+  │   每只猫一张卡片（来自 nutrapaw_pets_${username}）
+  │   卡片信息：猫名 · 品种 · 年龄 · 体重 · 性别（只读）
+  │   点击卡片 → 预填 form → 跳 Step 2（selectSavedPet）
+  │   [+ 为新猫咪推荐] → 清空所有状态 → Step 1
+  │
+  ├─ 【未登录 / 无档案，单宠物模式】：
+  │   H1：「继续上次的推荐？」
+  │   单卡片（lastCatSession）
+  │   [继续推荐 →] → 预填 form/healthTags → Step 2
+  │   [+ 添加新猫咪] → 清空 → Step 1
+  │
+  └─ 两种模式共有：底部"+ 为新猫咪推荐"按钮
 
 Step 1  基本信息（进度条 Step 1）
-  ├─ 若有 lastCatSession：顶部显示"← 返回已有猫咪档案"→ Step 0
-  └─ [下一步] → 合并写入 localStorage → Step 2
+  ├─ 若有 lastCatSession 或 savedPets：顶部显示"← 返回猫咪选择"→ Step 0
+  └─ [下一步] → 写入 localStorage → Step 2
 
 Step 2  健康需求（进度条 Step 2）
   ├─ 顶部只读猫咪摘要卡（品种/年龄/体重/性别）
-  ├─ 若来自 Step 0 且有历史健康需求：
-  │   提示横幅"已加载上次的健康需求，请确认是否有变化"
-  │   预填 healthTags（可增减）+ 预填 customInput（可修改）
-  ├─ [← 返回] → 来自 Step 0 ? Step 0 : Step 1
-  └─ [✨ 直接推荐] → 追加写入 localStorage → 调用 API
+  ├─ 来自 Step 0 + 同名猫有历史健康需求：
+  │   提示「已加载上次的健康需求，请确认是否有变化」
+  │   预填 healthTags + customInput（可增减/修改）
+  ├─ [← 返回] → step2From === 'step0' ? Step 0 : Step 1
+  └─ [✨ 生成推荐] → 写入 localStorage → 调用 API
 
 Step 3  Loading（进度条 Step 3，现有逻辑不变）
 ```
+
+### 15.3 多宠物模式数据来源
+
+| 数据键 | 内容 | 写入时机 |
+|--------|------|---------|
+| `nutrapaw_pets_${username}` | `Pet[]`（完整档案列表） | 结果页「加入档案」时写入 |
+| `lastCatSession` | 最后一次推荐的单猫信息 | Step 1→Step 2、点击「生成推荐」时写入 |
+
+**优先级：** 已登录 + `nutrapaw_pets_${username}` 有数据 → 多宠物模式；否则回退到 `lastCatSession` 单宠物模式。
 
 ### 15.3 进度条规则
 
@@ -542,17 +581,32 @@ HealthAssessment {
 - **模型：** DeepSeek API，JSON 格式返回
 - **日志上限：** 最近 10 条记录参与评估
 
-### 16.4 API 端点
+### 16.4 数据持久化架构（v1.3 实施：全 localStorage）
+
+**背景：** Vercel Serverless 冷启动后内存 Map 被清空，导致宠物档案/日志/评估丢失。v1.3 将全部数据迁移至客户端 localStorage，与推荐结果 `result_${id}` 的现有模式保持一致。
+
+| localStorage 键 | 类型 | 说明 |
+|-----------------|------|------|
+| `nutrapaw_pets_${username}` | `Pet[]` | 用户的全部宠物档案 |
+| `nutrapaw_logs_${petId}` | `PetHealthLog[]` | 某只宠物的所有日志 |
+| `nutrapaw_assessment_${petId}` | `HealthAssessment \| null` | AI 评估结果（含 48h expiresAt） |
+| `nutrapaw_user_auth` | 认证凭证对象 | 见第十七章 |
+
+工具函数：`lib/petLocalStore.ts`，导出 `getPets / savePet / getLogs / saveLog / getAssessment / saveAssessment / generateId`。
+
+### 16.5 API 端点（v1.3 重构后）
 
 ```
-GET  /api/pets                      → 当前用户的所有宠物
-POST /api/pets                      → 创建宠物
-GET  /api/pets/[petId]/logs         → 该宠物日志（倒序）
-POST /api/pets/[petId]/logs         → 添加日志记录
-POST /api/pets/[petId]/assessment   → 触发 AI 评估（缓存 48h）
+POST /api/pets/[petId]/assessment
+  — 接受请求体：{ pet: Pet, logs: PetHealthLog[] }
+  — 调用 DeepSeek API 生成 JSON 评估
+  — 返回 HealthAssessment 对象（客户端调用 saveAssessment() 缓存）
+  — 仅需 JWT 验证，不查询服务端 Map
 ```
 
-### 16.5 UI 设计规范（沿用设计系统）
+> **注意：** `/api/pets`、`/api/pets/[petId]/logs` 等读写路由不再被前端调用，数据改由 localStorage 管理。API 路由保留但废弃。
+
+### 16.6 UI 设计规范（沿用设计系统）
 
 | 元素 | 样式 |
 |------|------|
@@ -566,4 +620,92 @@ POST /api/pets/[petId]/assessment   → 触发 AI 评估（缓存 48h）
 
 ---
 
+## 十七、客户端持久化架构（v1.3 总结）
+
+**核心决策：** 所有用户数据（宠物、日志、评估、认证凭证）存储于浏览器 localStorage，服务端保持完全无状态（Stateless）。
+
+### 17.1 localStorage 完整键映射
+
+| 键名 | 类型 | 写入场景 | 读取场景 |
+|------|------|---------|---------|
+| `result_${id}` | `RecommendResult` | 推荐 API 返回时 | 结果页加载时 |
+| `lastCatSession` | `CatSession` | Step 1→2 + 点击生成推荐 | 推荐页 useEffect |
+| `user` | `{ id, username, email, nickname }` | 注册/登录成功时 | AuthNav、各页面验权 |
+| `sessionToken` | JWT string | 注册/登录成功时 | API 调用时 Authorization header |
+| `nutrapaw_user_auth` | `{ id, username, email, nickname, passwordHash, createdAt }` | 注册成功时（SignupModal） | 登录时（LoginModal） |
+| `nutrapaw_pets_${username}` | `Pet[]` | 结果页「加入档案」 | 推荐页 Step 0、档案页 |
+| `nutrapaw_logs_${petId}` | `PetHealthLog[]` | 宠物档案页「记录今日」 | 宠物档案页历史列表 |
+| `nutrapaw_assessment_${petId}` | `HealthAssessment \| null` | AI 评估返回后 | 宠物档案页评估卡片 |
+
+### 17.2 架构优势与局限
+
+| 优势 | 局限 |
+|------|------|
+| 零服务端存储成本 | 数据仅在本设备可见 |
+| Vercel Redeploy 不影响用户数据 | 清除浏览器数据即丢失 |
+| 无数据库维护成本 | 无法跨设备同步（v2 规划迁移 Supabase） |
+| 与现有推荐结果持久化逻辑一致 | 无服务端备份 |
+
+### 17.3 认证无状态路径（v1.1 里程碑新增）
+
+传统认证需要服务端 Map 验证密码；Vercel Redeploy 后 Map 清空，导致用户无法登录。
+
+**解决方案：** 注册时将 bcrypt hash 随响应返回，客户端存入 `nutrapaw_user_auth.passwordHash`。下次登录时附带 `clientHash`，服务端直接做 `bcrypt.compare()` 而无需查询 Map。
+
+```
+注册流程：
+  客户端 POST /api/auth/signup → 服务端返回 { user, sessionToken, passwordHash }
+  客户端写入 nutrapaw_user_auth = { ...user, passwordHash }
+
+登录流程（clientHash 路径）：
+  客户端读取 nutrapaw_user_auth → 找到同名用户 → 附带 clientHash
+  POST /api/auth/login { username, password, clientHash, clientId, ... }
+  服务端：bcrypt.compare(password, clientHash) → 验证通过 → 返回 sessionToken
+
+登录流程（回退路径）：
+  本地无 nutrapaw_user_auth → 走服务端 Map 路径（首次或旧设备）
+```
+
+**安全性：** bcrypt hash 不可逆，存在 localStorage 中无法被还原为明文密码。风险与 JWT 存储在 localStorage 相同级别（已知 MVP 可接受的安全姿态）。
+
+---
+
+## 十八、v1.1 里程碑 Bug Fix Round 2
+
+**上线版本：** commit `7aed51d`，2026-03-01
+
+### 18.1 Bug 清单与根因
+
+| Bug ID | 现象 | 根本原因 | 修复方案 |
+|--------|------|---------|---------|
+| BUG-04 | 推荐历史页只显示 1 只猫，档案页有 2 只 | `recommend/page.tsx` 只读 `lastCatSession`（单 key），未读 `nutrapaw_pets_${username}`（多猫列表） | 已登录时读取完整宠物列表，Step 0 渲染所有宠物卡片 |
+| BUG-05 | Vercel Redeploy 后账号消失，需重新注册 | `lib/resultStore.ts` 内存 Map 被清空，登录验证依赖服务端状态 | 认证无状态路径：bcrypt hash 持久化在 localStorage |
+| BUG-06 | 同一只猫可重复加入档案 | `handleAddToPetProfile()` 每次创建新 UUID，无去重逻辑；刷新后 `petAddStatus` 重置 | 挂载时检查 `resultId` 是否已存在；创建前检查 `resultId` 或 `name` 重复 |
+
+### 18.2 修改文件清单
+
+| 文件 | 改动摘要 |
+|------|---------|
+| `app/result/[id]/page.tsx` | 新增挂载恢复 petAddStatus 的 useEffect；handleAddToPetProfile 添加去重检查 |
+| `app/recommend/page.tsx` | 新增 savedPets state；useEffect 读取多宠物列表；新增 selectSavedPet 函数；Step 0 多卡片 JSX |
+| `app/api/auth/login/route.ts` | 支持 clientHash 无状态路径，保留服务端 Map 回退 |
+| `app/api/auth/signup/route.ts` | 响应中新增 passwordHash 字段 |
+| `components/auth/LoginModal.tsx` | 登录时读取 nutrapaw_user_auth，附加 clientHash 到请求体 |
+| `components/auth/SignupModal.tsx` | 注册成功后写入 nutrapaw_user_auth 到 localStorage |
+| `types/auth.ts` | AuthResponse 新增可选字段 passwordHash |
+
+### 18.3 已知局限（MVP 可接受）
+
+- BUG-05 解决方案：新设备登录（无 localStorage）仍需重新注册，这是当前架构下的已知限制；v2 迁移数据库后可完全解决。
+- BUG-06：按 `resultId` 和 `name` 去重（同名不同来源的猫咪视为同一只），适合 MVP；v2 可改为按 `petId` 严格去重。
+
+---
+
 *文档将随需求迭代持续更新，代码变更须先更新此文档。*
+
+---
+*v1.0 — 2026-02-28 初始发布*
+*v1.1 — 2026-03-01 新增用户认证系统 + 推荐缓存优化*
+*v1.2 — 2026-03-01 新增全站 AuthNav + 推荐流程猫咪档案记忆*
+*v1.3 — 2026-03-01 新增宠物健康日志系统 + AI 健康评估（localStorage 架构）*
+*v1.1 里程碑 — 2026-03-01 Bug Fix Round 2（3 大 Bug 修复），正式发布*
