@@ -15,7 +15,7 @@ function getTokenFromRequest(req: NextRequest): string | null {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { petId: string } }
+  { params }: { params: Promise<{ petId: string }> }
 ) {
   const token = getTokenFromRequest(req)
   if (!token) return NextResponse.json({ error: '未登录' }, { status: 401 })
@@ -23,7 +23,7 @@ export async function GET(
   const payload = verifyToken(token)
   if (!payload) return NextResponse.json({ error: 'Token 已过期' }, { status: 401 })
 
-  const { petId } = params
+  const { petId } = await params
   if (!isPetOwner(petId, payload.userId)) {
     return NextResponse.json({ error: '无权限访问此宠物档案' }, { status: 403 })
   }
@@ -34,7 +34,7 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { petId: string } }
+  { params }: { params: Promise<{ petId: string }> }
 ) {
   const token = getTokenFromRequest(req)
   if (!token) return NextResponse.json({ error: '未登录' }, { status: 401 })
@@ -42,7 +42,7 @@ export async function POST(
   const payload = verifyToken(token)
   if (!payload) return NextResponse.json({ error: 'Token 已过期' }, { status: 401 })
 
-  const { petId } = params
+  const { petId } = await params
   if (!isPetOwner(petId, payload.userId)) {
     return NextResponse.json({ error: '无权限访问此宠物档案' }, { status: 403 })
   }

@@ -39,7 +39,7 @@ const VOMITING_ZH: Record<string, string> = {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { petId: string } }
+  { params }: { params: Promise<{ petId: string }> }
 ) {
   const token = getTokenFromRequest(req)
   if (!token) return NextResponse.json({ error: '未登录' }, { status: 401 })
@@ -47,7 +47,7 @@ export async function POST(
   const payload = verifyToken(token)
   if (!payload) return NextResponse.json({ error: 'Token 已过期' }, { status: 401 })
 
-  const { petId } = params
+  const { petId } = await params
   if (!isPetOwner(petId, payload.userId)) {
     return NextResponse.json({ error: '无权限' }, { status: 403 })
   }
