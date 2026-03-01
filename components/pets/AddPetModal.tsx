@@ -3,54 +3,56 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Pet } from '@/types/pet'
+import { savePet, generateId } from '@/lib/petLocalStore'
 
 interface AddPetModalProps {
-  sessionToken: string
+  /** 当前登录用户的 username，用于 localStorage key 分区 */
+  username: string
   onSuccess: (pet: Pet) => void
   onClose: () => void
 }
 
-export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalProps) {
+export function AddPetModal({ username, onSuccess, onClose }: AddPetModalProps) {
   const [name, setName] = useState('')
   const [breed, setBreed] = useState('')
   const [gender, setGender] = useState<'male' | 'female'>('male')
   const [neutered, setNeutered] = useState(true)
   const [ageMonths, setAgeMonths] = useState('')
   const [weightKg, setWeightKg] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    setLoading(true)
-    try {
-      const res = await fetch('/api/pets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionToken}`,
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          breed: breed.trim(),
-          gender,
-          neutered,
-          ageMonths: parseInt(ageMonths, 10),
-          weightKg: parseFloat(weightKg),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || '创建失败，请重试')
-        return
-      }
-      onSuccess(data.pet as Pet)
-    } catch {
-      setError('网络错误，请检查连接')
-    } finally {
-      setLoading(false)
+
+    const age = parseInt(ageMonths, 10)
+    const weight = parseFloat(weightKg)
+
+    if (isNaN(age) || age < 1 || age > 240) {
+      setError('请输入有效的月龄（1-240）')
+      return
     }
+    if (isNaN(weight) || weight < 0.5 || weight > 20) {
+      setError('请输入有效的体重（0.5-20 kg）')
+      return
+    }
+
+    const now = new Date().toISOString()
+    const newPet: Pet = {
+      id: generateId(),
+      userId: username,
+      name: name.trim(),
+      breed: breed.trim(),
+      gender,
+      neutered,
+      ageMonths: age,
+      weightKg: weight,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    savePet(username, newPet)
+    onSuccess(newPet)
   }
 
   const GENDER_OPTIONS = [
@@ -96,7 +98,6 @@ export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalPro
                 onChange={(e) => setName(e.target.value)}
                 placeholder="如：橘墩"
                 required
-                disabled={loading}
                 className="w-full border border-[#E8E6E1] rounded-xl px-3 py-2.5 text-[14px] text-[#1A1815] placeholder-[#D1CEC7] focus:outline-none focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 transition-all"
               />
             </div>
@@ -110,7 +111,6 @@ export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalPro
                 onChange={(e) => setBreed(e.target.value)}
                 placeholder="如：英国短毛猫"
                 required
-                disabled={loading}
                 className="w-full border border-[#E8E6E1] rounded-xl px-3 py-2.5 text-[14px] text-[#1A1815] placeholder-[#D1CEC7] focus:outline-none focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 transition-all"
               />
             </div>
@@ -130,7 +130,6 @@ export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalPro
                 required
                 min="1"
                 max="240"
-                disabled={loading}
                 className="w-full border border-[#E8E6E1] rounded-xl px-3 py-2.5 text-[14px] text-[#1A1815] placeholder-[#D1CEC7] focus:outline-none focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 transition-all"
               />
             </div>
@@ -147,7 +146,6 @@ export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalPro
                 required
                 min="0.5"
                 max="20"
-                disabled={loading}
                 className="w-full border border-[#E8E6E1] rounded-xl px-3 py-2.5 text-[14px] text-[#1A1815] placeholder-[#D1CEC7] focus:outline-none focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 transition-all"
               />
             </div>
@@ -164,7 +162,6 @@ export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalPro
                   key={opt.value}
                   type="button"
                   onClick={() => setGender(opt.value)}
-                  disabled={loading}
                   className={`flex-1 py-2.5 rounded-xl text-[13px] font-medium border transition-all ${
                     gender === opt.value
                       ? 'bg-[#E8721A] text-white border-[#E8721A] shadow-sm'
@@ -188,7 +185,6 @@ export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalPro
                   key={String(opt.value)}
                   type="button"
                   onClick={() => setNeutered(opt.value)}
-                  disabled={loading}
                   className={`flex-1 py-2.5 rounded-xl text-[13px] font-medium border transition-all ${
                     neutered === opt.value
                       ? 'bg-[#E8721A] text-white border-[#E8721A] shadow-sm'
@@ -214,17 +210,15 @@ export function AddPetModal({ sessionToken, onSuccess, onClose }: AddPetModalPro
             <button
               type="button"
               onClick={onClose}
-              disabled={loading}
-              className="flex-1 py-3 rounded-xl border border-[#E8E6E1] text-[14px] font-medium text-[#78746C] hover:bg-[#F4F3F0] disabled:opacity-50 transition-colors"
+              className="flex-1 py-3 rounded-xl border border-[#E8E6E1] text-[14px] font-medium text-[#78746C] hover:bg-[#F4F3F0] transition-colors"
             >
               取消
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 py-3 rounded-xl bg-[#E8721A] text-white text-[14px] font-semibold shadow-[0_4px_24px_rgba(232,114,26,0.25)] hover:bg-[#C45C0A] disabled:bg-[#D1CEC7] disabled:cursor-not-allowed transition-all"
+              className="flex-1 py-3 rounded-xl bg-[#E8721A] text-white text-[14px] font-semibold shadow-[0_4px_24px_rgba(232,114,26,0.25)] hover:bg-[#C45C0A] transition-all"
             >
-              {loading ? '创建中...' : '创建档案'}
+              创建档案
             </button>
           </div>
         </form>

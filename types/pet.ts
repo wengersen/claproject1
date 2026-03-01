@@ -14,6 +14,7 @@ export interface Pet {
   neutered: boolean
   ageMonths: number     // 创建时填写的月龄（不自动递增）
   weightKg: number      // 基准体重
+  resultId?: string     // 从推荐结果创建时存储来源 resultId，用于"推荐来源"关联
   createdAt: string
   updatedAt: string
 }

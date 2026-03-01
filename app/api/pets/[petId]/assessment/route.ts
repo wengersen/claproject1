@@ -1,19 +1,13 @@
 /**
  * POST /api/pets/[petId]/assessment
- * 触发 AI 健康评估（带 48h 缓存）
- * 使用最近 10 条日志生成分析
+ * 触发 AI 健康评估
+ * 接收客户端传入的 { pet, logs }，直接生成评估并返回。
+ * 缓存（48h）由客户端 petLocalStore.saveAssessment() 负责管理。
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
-import {
-  isPetOwner,
-  getPetById,
-  getRecentLogs,
-  getCachedAssessment,
-  setAssessment,
-} from '@/lib/petStore'
-import type { HealthAssessment, HealthStatus } from '@/types/pet'
+import type { HealthAssessment, HealthStatus, Pet, PetHealthLog } from '@/types/pet'
 
 function getTokenFromRequest(req: NextRequest): string | null {
   const auth = req.headers.get('authorization')
@@ -48,19 +42,20 @@ export async function POST(
   if (!payload) return NextResponse.json({ error: 'Token 已过期' }, { status: 401 })
 
   const { petId } = await params
-  if (!isPetOwner(petId, payload.userId)) {
-    return NextResponse.json({ error: '无权限' }, { status: 403 })
+
+  // 从请求体读取 pet 和 logs（由客户端 localStorage 传入，无需服务端 petStore）
+  let pet: Pet
+  let logs: PetHealthLog[]
+  try {
+    const body = await req.json()
+    pet = body.pet as Pet
+    logs = body.logs as PetHealthLog[]
+  } catch {
+    return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
   }
 
-  // 返回有效缓存
-  const cached = getCachedAssessment(petId)
-  if (cached) return NextResponse.json({ assessment: cached })
-
-  const pet = getPetById(petId)
-  if (!pet) return NextResponse.json({ error: '宠物不存在' }, { status: 404 })
-
-  const logs = getRecentLogs(petId, 10)
-  if (logs.length === 0) {
+  if (!pet) return NextResponse.json({ error: '缺少宠物信息' }, { status: 400 })
+  if (!logs || logs.length === 0) {
     return NextResponse.json({ error: '暂无健康记录，请先记录至少一次状态' }, { status: 400 })
   }
 
@@ -164,6 +159,17 @@ ${logsDesc}
     }
   }
 
-  const assessment = setAssessment(petId, assessmentData)
+  // 构建完整评估对象（含 id / 时间戳 / 48h 缓存过期时间）
+  // 客户端收到后调用 saveAssessment(petId, assessment) 存入 localStorage 缓存
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString()
+  const assessment: HealthAssessment = {
+    id: crypto.randomUUID(),
+    petId,
+    generatedAt: now.toISOString(),
+    expiresAt,
+    ...assessmentData,
+  }
+
   return NextResponse.json({ assessment })
 }

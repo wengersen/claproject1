@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AppetiteLevel, EnergyLevel, DrinkingLevel, StoolCondition, VomitingFrequency } from '@/types/pet'
+import { saveLog, clearAssessment, generateId } from '@/lib/petLocalStore'
 
 interface LogEntryModalProps {
   petName: string
   petId: string
-  sessionToken: string
+  userId: string  // 用于写入 log.userId 字段
   onSuccess: () => void
   onClose: () => void
 }
@@ -57,7 +58,7 @@ const OPTION_GROUPS = {
   },
 }
 
-export function LogEntryModal({ petName, petId, sessionToken, onSuccess, onClose }: LogEntryModalProps) {
+export function LogEntryModal({ petName, petId, userId, onSuccess, onClose }: LogEntryModalProps) {
   const today = new Date().toISOString().split('T')[0]
 
   const [date, setDate] = useState(today)
@@ -68,45 +69,28 @@ export function LogEntryModal({ petName, petId, sessionToken, onSuccess, onClose
   const [stool, setStool] = useState<StoolCondition>('normal')
   const [vomiting, setVomiting] = useState<VomitingFrequency>('none')
   const [notes, setNotes] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError('')
-    setLoading(true)
 
-    try {
-      const res = await fetch(`/api/pets/${petId}/logs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionToken}`,
-        },
-        body: JSON.stringify({
-          date,
-          appetite,
-          energy,
-          drinking,
-          stool,
-          vomiting,
-          weightKg: weightKg ? parseFloat(weightKg) : undefined,
-          notes: notes.trim() || undefined,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || '保存失败，请重试')
-        return
-      }
-
-      onSuccess()
-    } catch {
-      setError('网络错误，请检查连接')
-    } finally {
-      setLoading(false)
-    }
+    const now = new Date().toISOString()
+    saveLog({
+      id: generateId(),
+      petId,
+      userId,
+      date,
+      weightKg: weightKg ? parseFloat(weightKg) : undefined,
+      appetite,
+      energy,
+      drinking,
+      stool,
+      vomiting,
+      notes: notes.trim() || undefined,
+      createdAt: now,
+    })
+    // 新日志写入后清除旧评估缓存，提示用户重新生成
+    clearAssessment(petId)
+    onSuccess()
   }
 
   const modal = (
@@ -209,14 +193,6 @@ export function LogEntryModal({ petName, petId, sessionToken, onSuccess, onClose
             />
           </div>
 
-          {/* 错误提示 */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
-              <span className="text-red-500 shrink-0">⚠️</span>
-              <p className="text-[13px] text-red-700">{error}</p>
-            </div>
-          )}
-
           {/* 操作按钮 */}
           <div className="flex gap-3 pt-1">
             <button
@@ -228,10 +204,9 @@ export function LogEntryModal({ petName, petId, sessionToken, onSuccess, onClose
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 py-3 rounded-xl bg-[#E8721A] text-white text-[14px] font-semibold shadow-[0_4px_24px_rgba(232,114,26,0.25)] hover:bg-[#C45C0A] disabled:bg-[#D1CEC7] disabled:cursor-not-allowed transition-all"
+              className="flex-1 py-3 rounded-xl bg-[#E8721A] text-white text-[14px] font-semibold shadow-[0_4px_24px_rgba(232,114,26,0.25)] hover:bg-[#C45C0A] transition-all"
             >
-              {loading ? '保存中...' : '保存记录'}
+              保存记录
             </button>
           </div>
         </form>

@@ -6,15 +6,14 @@ import Link from 'next/link'
 import type { StoredRecommendation } from '@/types/auth'
 import type { Pet } from '@/types/pet'
 import { AddPetModal } from '@/components/pets/AddPetModal'
+import { getPets } from '@/lib/petLocalStore'
 
 export default function ProfilePage() {
   const router = useRouter()
   const [user, setUser] = useState<{ username: string; nickname?: string; email?: string } | null>(null)
   const [recommendations, setRecommendations] = useState<StoredRecommendation[]>([])
   const [pets, setPets] = useState<Pet[]>([])
-  const [petsLoading, setPetsLoading] = useState(true)
   const [showAddPet, setShowAddPet] = useState(false)
-  const [sessionToken, setSessionToken] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -30,20 +29,9 @@ export default function ProfilePage() {
       return
     }
 
-    // 保存 token 到 state
-    const token = localStorage.getItem('sessionToken') || ''
-    setSessionToken(token)
-
-    // 获取宠物列表
-    if (token) {
-      fetch('/api/pets', { headers: { Authorization: `Bearer ${token}` } })
-        .then((r) => (r.ok ? r.json() : { pets: [] }))
-        .then((data) => setPets(data.pets ?? []))
-        .catch(() => {})
-        .finally(() => setPetsLoading(false))
-    } else {
-      setPetsLoading(false)
-    }
+    // 直接从 localStorage 读取宠物列表（无需 API，数据持久化在本地）
+    const parsedUser = JSON.parse(userStr) as { username: string; nickname?: string; email?: string }
+    setPets(getPets(parsedUser.username))
 
     // 从 localStorage 读取所有保存的推荐结果
     const savedRecs: StoredRecommendation[] = []
@@ -164,11 +152,7 @@ export default function ProfilePage() {
             </button>
           </div>
 
-          {petsLoading ? (
-            <div className="bg-white border border-[#E8E6E1] rounded-2xl p-8 flex justify-center">
-              <div className="text-2xl animate-paw-pulse">🐾</div>
-            </div>
-          ) : pets.length === 0 ? (
+          {pets.length === 0 ? (
             <div className="bg-white border border-[#E8E6E1] rounded-2xl p-10 text-center">
               <div className="text-5xl mb-4">🐱</div>
               <h3 className="text-[16px] font-semibold text-[#1A1815] mb-2">还没有猫咪档案</h3>
@@ -283,9 +267,9 @@ export default function ProfilePage() {
       </main>
 
       {/* 添加猫咪弹窗 */}
-      {showAddPet && (
+      {showAddPet && user && (
         <AddPetModal
-          sessionToken={sessionToken}
+          username={user.username}
           onSuccess={handlePetAdded}
           onClose={() => setShowAddPet(false)}
         />

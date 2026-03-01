@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { LogEntryModal } from '@/components/pets/LogEntryModal'
@@ -16,6 +16,14 @@ import {
   type PetHealthLog,
   type HealthAssessment,
 } from '@/types/pet'
+import {
+  getPets,
+  getLogs,
+  getAssessment,
+  saveAssessment,
+  getRecentLogs,
+  generateId,
+} from '@/lib/petLocalStore'
 
 export default function PetHealthPage() {
   const params = useParams()
@@ -27,55 +35,92 @@ export default function PetHealthPage() {
   const [assessment, setAssessment] = useState<HealthAssessment | null>(null)
   const [showLogModal, setShowLogModal] = useState(false)
   const [sessionToken, setSessionToken] = useState('')
+  const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(true)
   const [assessmentLoading, setAssessmentLoading] = useState(false)
   const [assessmentError, setAssessmentError] = useState('')
 
-  const fetchData = useCallback(async (token: string) => {
-    try {
-      const [petsRes, logsRes] = await Promise.all([
-        fetch('/api/pets', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`/api/pets/${petId}/logs`, { headers: { Authorization: `Bearer ${token}` } }),
-      ])
-
-      if (!petsRes.ok) { router.push('/profile'); return }
-
-      const petsData = await petsRes.json()
-      const found = petsData.pets?.find((p: Pet) => p.id === petId)
-      if (!found) { router.push('/profile'); return }
-      setPet(found)
-
-      if (logsRes.ok) {
-        const logsData = await logsRes.json()
-        setLogs(logsData.logs ?? [])
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [petId, router])
+  // 从 localStorage 读取推荐来源（若 pet.resultId 存在）
+  const [linkedResult, setLinkedResult] = useState<{
+    catName: string; breed: string; generatedAt: string
+  } | null>(null)
 
   useEffect(() => {
     const token = localStorage.getItem('sessionToken') ?? ''
     const userStr = localStorage.getItem('user')
     if (!token || !userStr) { router.push('/profile'); return }
+
+    let parsedUser: { username: string; nickname?: string } | null = null
+    try { parsedUser = JSON.parse(userStr) } catch { router.push('/profile'); return }
+    if (!parsedUser) { router.push('/profile'); return }
+
     setSessionToken(token)
-    fetchData(token)
-  }, [fetchData, router])
+    setUsername(parsedUser.username)
+
+    // 从 localStorage 查找宠物
+    const allPets = getPets(parsedUser.username)
+    const found = allPets.find((p) => p.id === petId)
+    if (!found) { router.push('/profile'); return }
+
+    setPet(found)
+    setLogs(getLogs(petId))
+
+    // 检查 48h 内的评估缓存
+    const cached = getAssessment(petId)
+    if (cached) setAssessment(cached)
+
+    // 加载推荐来源
+    if (found.resultId) {
+      try {
+        const resultRaw = localStorage.getItem(`result_${found.resultId}`)
+        if (resultRaw) {
+          const result = JSON.parse(resultRaw)
+          if (result?.catProfile) {
+            setLinkedResult({
+              catName: result.catProfile.name,
+              breed: result.catProfile.breed,
+              generatedAt: result.generatedAt,
+            })
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    setLoading(false)
+  }, [petId, router])
 
   async function handleGenerateAssessment() {
+    if (!pet) return
     setAssessmentLoading(true)
     setAssessmentError('')
+
+    // 再次检查缓存（防止重复点击）
+    const cached = getAssessment(petId)
+    if (cached) {
+      setAssessment(cached)
+      setAssessmentLoading(false)
+      return
+    }
+
     try {
+      const recentLogs = getRecentLogs(petId, 10)
       const res = await fetch(`/api/pets/${petId}/assessment`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${sessionToken}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ pet, logs: recentLogs }),
       })
       const data = await res.json()
       if (!res.ok) {
         setAssessmentError(data.error ?? '生成失败，请稍后重试')
         return
       }
-      setAssessment(data.assessment)
+      const newAssessment = data.assessment as HealthAssessment
+      // 客户端持久化评估结果
+      saveAssessment(petId, newAssessment)
+      setAssessment(newAssessment)
     } catch {
       setAssessmentError('网络错误，请检查连接')
     } finally {
@@ -85,8 +130,9 @@ export default function PetHealthPage() {
 
   function handleLogSuccess() {
     setShowLogModal(false)
-    fetchData(sessionToken)
-    // 新记录后清除评估缓存（提示用户重新生成）
+    // 重新从 localStorage 读取日志（LogEntryModal 已写入）
+    setLogs(getLogs(petId))
+    // 新日志写入后评估已被 clearAssessment 清除，同步 state
     setAssessment(null)
   }
 
@@ -156,6 +202,27 @@ export default function PetHealthPage() {
             </p>
           </div>
         </div>
+
+        {/* 推荐来源卡（若 pet 从推荐流程创建） */}
+        {linkedResult && pet.resultId && (
+          <Link
+            href={`/result/${pet.resultId}`}
+            className="flex items-center gap-3 bg-white border border-[#E8E6E1] rounded-2xl px-5 py-3.5 hover:border-[#FFB87A] hover:shadow-sm transition-all group"
+          >
+            <span className="text-lg">📋</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-[#4A4641] group-hover:text-[#E8721A] transition-colors">
+                推荐来源：{linkedResult.catName} · {linkedResult.breed}
+              </p>
+              <p className="text-[11px] text-[#A8A49C] mt-0.5">
+                {new Date(linkedResult.generatedAt).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })} 生成
+              </p>
+            </div>
+            <span className="text-[12px] text-[#E8721A] font-medium shrink-0 group-hover:underline">
+              查看推荐 →
+            </span>
+          </Link>
+        )}
 
         {/* AI 健康评估卡 */}
         <div className="bg-[#FFF8F3] border border-[#FFD9B5] rounded-2xl overflow-hidden">
@@ -250,13 +317,13 @@ export default function PetHealthPage() {
                   </div>
                 )}
 
-                {/* 刷新按钮 */}
+                {/* 重新生成 */}
                 <button
-                  onClick={handleGenerateAssessment}
+                  onClick={() => { saveAssessment(petId, null); setAssessment(null) }}
                   disabled={assessmentLoading}
                   className="text-[12px] text-[#A8A49C] hover:text-[#E8721A] transition-colors"
                 >
-                  🔄 重新生成评估
+                  🔄 清除缓存，重新生成
                 </button>
               </div>
             )}
@@ -290,7 +357,6 @@ export default function PetHealthPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2.5">
-                        {/* 状态圆点 */}
                         <div className={`w-3 h-3 rounded-full shrink-0 mt-0.5 ${
                           status === 'excellent' || status === 'good' ? 'bg-green-500' :
                           status === 'attention' ? 'bg-amber-500' : 'bg-red-500'
@@ -333,7 +399,7 @@ export default function PetHealthPage() {
         <LogEntryModal
           petName={pet.name}
           petId={petId}
-          sessionToken={sessionToken}
+          userId={username}
           onSuccess={handleLogSuccess}
           onClose={() => setShowLogModal(false)}
         />

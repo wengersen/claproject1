@@ -10,9 +10,11 @@ import { SignupModal } from '@/components/auth/SignupModal'
 import { LoginModal } from '@/components/auth/LoginModal'
 import { HEALTH_TAG_CONFIG, type RecommendResult, type ProductRecommendation } from '@/types/cat'
 import type { AuthResponse } from '@/types/auth'
+import type { Pet } from '@/types/pet'
+import { savePet, generateId } from '@/lib/petLocalStore'
 
 type AuthModal = 'signup' | 'login' | null
-type PetAddStatus = 'idle' | 'adding' | 'added' | 'error'
+type PetAddStatus = 'idle' | 'added' | 'error'
 
 export default function ResultPage() {
   const params = useParams()
@@ -102,39 +104,34 @@ export default function ResultPage() {
     setSaveStatus('idle')
   }
 
-  async function handleAddToPetProfile() {
+  function handleAddToPetProfile() {
     if (!result) return
-    const { catProfile } = result
-    const token = localStorage.getItem('sessionToken')
-    if (!token) {
+    // 检查登录状态（需要 username 作为 localStorage 分区 key）
+    const userStr = localStorage.getItem('user')
+    if (!userStr) {
       setAuthModal('login')
       return
     }
-    setPetAddStatus('adding')
     try {
-      const res = await fetch('/api/pets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: catProfile.name,
-          breed: catProfile.breed,
-          gender: catProfile.gender,
-          neutered: catProfile.neutered,
-          ageMonths: catProfile.ageMonths,
-          weightKg: catProfile.weightKg,
-        }),
-      })
-      const data = await res.json()
-      if (res.ok && data.pet) {
-        setAddedPetId(data.pet.id as string)
-        setPetAddStatus('added')
-      } else {
-        setPetAddStatus('error')
-        setTimeout(() => setPetAddStatus('idle'), 4000)
+      const parsedUser = JSON.parse(userStr) as { username: string }
+      const { catProfile } = result
+      const now = new Date().toISOString()
+      const newPet: Pet = {
+        id: generateId(),
+        userId: parsedUser.username,
+        name: catProfile.name,
+        breed: catProfile.breed,
+        gender: catProfile.gender,
+        neutered: catProfile.neutered,
+        ageMonths: catProfile.ageMonths,
+        weightKg: catProfile.weightKg,
+        resultId: result.id,   // 关联推荐来源，用于档案页"推荐来源"卡片
+        createdAt: now,
+        updatedAt: now,
       }
+      savePet(parsedUser.username, newPet)
+      setAddedPetId(newPet.id)
+      setPetAddStatus('added')
     } catch {
       setPetAddStatus('error')
       setTimeout(() => setPetAddStatus('idle'), 4000)
@@ -278,12 +275,6 @@ export default function ResultPage() {
             >
               加入档案 →
             </button>
-          </div>
-        )}
-        {savedUser && petAddStatus === 'adding' && (
-          <div className="bg-[#FFF8F3] border border-[#FFB87A] rounded-2xl p-5 flex items-center gap-3">
-            <span className="text-xl animate-paw-pulse">🐾</span>
-            <p className="text-[14px] text-[#78746C]">正在创建健康档案...</p>
           </div>
         )}
         {savedUser && petAddStatus === 'added' && addedPetId && (
