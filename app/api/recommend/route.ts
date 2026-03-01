@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { filterCandidates } from '@/lib/catfoods'
+import { recommendCache } from '@/lib/cache'
 import type { RecommendRequest, RecommendResult, ProductRecommendation, CatFood } from '@/types/cat'
 import { generateResultId } from '@/lib/formatters'
 
@@ -50,6 +51,14 @@ export async function POST(req: NextRequest) {
     // 参数验证
     if (!catProfile || !healthTags || healthTags.length === 0) {
       return NextResponse.json({ error: '参数不完整' }, { status: 400 })
+    }
+
+    // ─── 缓存检查：相同品种+标签组合在 5 分钟内直接返回缓存结果 ────
+    const cacheKey = recommendCache.generateCacheKey(catProfile.breed, healthTags)
+    const cachedResult = recommendCache.get(cacheKey)
+    if (cachedResult) {
+      console.log(`[cache hit] breed=${catProfile.breed}, tags=${healthTags.join(',')}`)
+      return NextResponse.json(cachedResult)
     }
 
     // Layer 1：数据库硬筛选
@@ -132,6 +141,10 @@ export async function POST(req: NextRequest) {
       disclaimer:
         '本推荐仅供参考，不构成兽医诊断或治疗建议。若猫咪有明显健康问题，请优先咨询兽医。处方粮需在兽医指导下使用。',
     }
+
+    // ─── 将结果存入缓存（供后续相同组合的请求使用） ────
+    recommendCache.set(cacheKey, result)
+    console.log(`[cache set] breed=${catProfile.breed}, tags=${healthTags.join(',')}`)
 
     return NextResponse.json(result)
   } catch (err) {
