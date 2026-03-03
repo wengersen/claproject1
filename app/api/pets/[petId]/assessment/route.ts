@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
 import type { HealthAssessment, HealthStatus, Pet, PetHealthLog } from '@/types/pet'
+import { formatAgeFromBirthday, calcAgeMonthsFromBirthday } from '@/lib/formatters'
 
 function getTokenFromRequest(req: NextRequest): string | null {
   const auth = req.headers.get('authorization')
@@ -71,15 +72,15 @@ export async function POST(
     )
     .join('\n')
 
-  const ageYears = Math.floor(pet.ageMonths / 12)
-  const ageStr = ageYears > 0 ? `${ageYears}岁${pet.ageMonths % 12 > 0 ? `${pet.ageMonths % 12}个月` : ''}` : `${pet.ageMonths}个月`
+  const ageStr = formatAgeFromBirthday(pet.birthday)
+  const ageMonthsNum = calcAgeMonthsFromBirthday(pet.birthday)
 
   const prompt = `你是一位专业的猫咪营养师和健康顾问。以下是一只猫咪的健康记录，请为主人提供专业分析。
 
 猫咪信息：
 - 名字：${pet.name}
 - 品种：${pet.breed}
-- 月龄：${ageStr}（${pet.ageMonths}个月）
+- 月龄：${ageStr}（${ageMonthsNum}个月）
 - 性别：${pet.gender === 'male' ? '公猫' : '母猫'}，${pet.neutered ? '已绝育' : '未绝育'}
 - 基准体重：${pet.weightKg}kg
 
