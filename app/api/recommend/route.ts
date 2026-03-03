@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { filterCandidates } from '@/lib/catfoods'
-import type { RecommendRequest, RecommendResult, ProductRecommendation, CatFood, FeedingGuide } from '@/types/cat'
+import type { RecommendRequest, RecommendResult, ProductRecommendation, CatFood, FeedingGuide, CatProfile } from '@/types/cat'
 import { generateResultId, calcAgeMonthsFromBirthday } from '@/lib/formatters'
 
 const client = new OpenAI({
@@ -64,7 +64,7 @@ const SYSTEM_PROMPT = `你是一位专业的猫咪营养顾问。你的任务是
 
 export async function POST(req: NextRequest) {
   try {
-    const body: RecommendRequest = await req.json()
+    const body = await req.json() as RecommendRequest
     const { catProfile, healthTags, customInput } = body
 
     // 参数验证
@@ -188,7 +188,7 @@ export async function POST(req: NextRequest) {
 // ─── 辅助函数 ────────────────────────────────────────────
 
 function buildUserMessage(
-  catProfile: ReturnType<typeof Object.assign>,
+  catProfile: CatProfile,
   healthTags: string[],
   customInput: string | undefined,
   dryFoods: CatFood[],
