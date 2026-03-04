@@ -28,7 +28,15 @@ import type { AuthResponse } from '@/types/auth'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    const body = await req.json() as {
+      username: string
+      password: string
+      clientHash?: string
+      clientId?: string
+      clientNickname?: string
+      clientEmail?: string
+      clientCreatedAt?: string
+    }
     const {
       username,
       password,

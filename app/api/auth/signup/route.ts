@@ -26,7 +26,12 @@ import type { AuthResponse } from '@/types/auth'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    const body = await req.json() as {
+      username: string
+      email: string
+      password: string
+      nickname?: string
+    }
     const { username, email, password, nickname } = body
 
     // 表单验证

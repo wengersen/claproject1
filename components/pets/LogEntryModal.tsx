@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { AppetiteLevel, EnergyLevel, DrinkingLevel, StoolCondition, VomitingFrequency } from '@/types/pet'
 import { saveLog, clearAssessment, generateId } from '@/lib/petLocalStore'
@@ -70,7 +70,7 @@ export function LogEntryModal({ petName, petId, userId, onSuccess, onClose }: Lo
   const [vomiting, setVomiting] = useState<VomitingFrequency>('none')
   const [notes, setNotes] = useState('')
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
     const now = new Date().toISOString()

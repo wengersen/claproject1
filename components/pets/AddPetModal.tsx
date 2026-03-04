@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { Pet } from '@/types/pet'
 import { savePet, generateId } from '@/lib/petLocalStore'
@@ -21,7 +21,7 @@ export function AddPetModal({ username, onSuccess, onClose }: AddPetModalProps) 
   const [weightKg, setWeightKg] = useState('')
   const [error, setError] = useState('')
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
 

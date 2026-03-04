@@ -21,7 +21,7 @@ import type { RecommendResult } from '@/types/cat'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    const body = await req.json() as { sessionToken?: string; result?: RecommendResult & { id?: string } }
     const { sessionToken, result } = body
 
     // 验证 token

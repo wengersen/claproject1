@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { AuthResponse } from '@/types/auth'
 
@@ -16,7 +16,7 @@ export function LoginModal({ onSuccess, onSwitchToSignup, onClose }: LoginModalP
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)

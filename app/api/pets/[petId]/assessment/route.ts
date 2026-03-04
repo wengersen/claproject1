@@ -48,9 +48,9 @@ export async function POST(
   let pet: Pet
   let logs: PetHealthLog[]
   try {
-    const body = await req.json()
-    pet = body.pet as Pet
-    logs = body.logs as PetHealthLog[]
+    const body = await req.json() as { pet: Pet; logs: PetHealthLog[] }
+    pet = body.pet
+    logs = body.logs
   } catch {
     return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
   }
