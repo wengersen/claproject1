@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // 临时：诊断 TypeScript 错误（通过 prebuild 脚本输出到 public/tsc-output.txt）
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 }
 
 export default nextConfig

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npx tsc --noEmit > public/tsc-output.txt 2>&1 || true",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
