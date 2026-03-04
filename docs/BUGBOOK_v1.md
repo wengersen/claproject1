@@ -168,7 +168,7 @@ Mock 数据包含完整结构（`feedingGuide`、`highlights`、`warnings`），
 
 ---
 
-## BUG-0003 · Vercel 生产环境推荐 API 500 — 缺少环境变量 + 误用 Mock 掩盖问题
+## BUG-0003 · Vercel 生产环境推荐 API 500 — 未部署最新代码 + 误用 Mock 掩盖问题
 
 **日期**：2026-03-05  
 **严重级别**：🔴 Build-Blocker（生产环境功能完全不可用）  
@@ -180,28 +180,30 @@ Mock 数据包含完整结构（`feedingGuide`、`highlights`、`warnings`），
 
 ### 根因分析（双重问题）
 
-**问题 A — Vercel 未配置 `DEEPSEEK_API_KEY`**：
-- `.env.local` 只在本地 `next dev` 时生效，**不会被推送到 Vercel**
-- Vercel 需要在 Dashboard → Settings → Environment Variables 中**单独配置**
-- 缺少 API Key 时，OpenAI SDK `new OpenAI({ apiKey: undefined })` 会在调用时抛异常
+**问题 A — 最新修复未提交部署**：
+- `DEEPSEEK_API_KEY` 已在 Vercel Dashboard 中正确配置（确认时间 2026-03-05）
+- 但本地的修复代码（移除 Mock、超时改 45s）仍停留在 `git diff` 工作区，**未 commit & push**
+- Vercel 线上运行的仍是旧 commit `10deb98`（带 Mock 分支 + 30s 超时）
+- 30s 超时不足以等待 DeepSeek API 响应，触发 AbortError → 500
 
 **问题 B — BUG-0002 中错误地引入了 Mock 模式**：
 - 本地 500 的真正原因是 30 秒超时，但修复时**误判为"本地网络无法连接 DeepSeek"并引入了 Mock 分支**
-- Mock 模式让本地测试通过了，但**掩盖了 Vercel 端同样的 500 问题**
-- 用户要求本地也走真实 API，说明 30 秒超时只是偶发问题，不应用 Mock 绕过
+- Mock 模式让本地测试通过了，但**掩盖了 Vercel 端同样的超时问题**
+- 用户要求本地也走真实 API，说明 30 秒超时只是偶发/可优化问题，不应用 Mock 绕过
 
 ### 修复方案
 
 1. **移除 Mock 分支**：删除 `NODE_ENV === 'development'` 条件分支，所有环境统一调用 DeepSeek
 2. **超时改为 45 秒**：`setTimeout(() => controller.abort(), 45_000)`
 3. **增加 API Key 前置校验**：在调用前检查 `process.env.DEEPSEEK_API_KEY`，缺失时返回明确的 500 错误信息
-4. **Vercel 配置环境变量**：用户需手动在 Dashboard 中添加 `DEEPSEEK_API_KEY`
+4. **提交并推送代码**：`git add && git commit && git push` 触发 Vercel 自动部署
 
 ### 预防规则
 
-1. **`.env.local` 里的变量必须同步配置到 Vercel**：每次新增 `.env.local` 变量时，立即提醒用户在 Vercel Dashboard 同步添加。
-2. **不要用 Mock 掩盖网络问题**：如果外部 API 调不通，应排查网络原因（代理/DNS/API Key），不应直接跳过调用。Mock 仅用于单元测试。
+1. **修复后必须立即 commit & push**：本地 `git diff` 中的修改永远不会部署到 Vercel，每次修复后养成 `commit → push → 等部署完成 → 验证` 的习惯。
+2. **不要用 Mock 掩盖网络问题**：如果外部 API 调不通，应排查网络原因（代理/DNS/超时阈值），不应直接跳过调用。Mock 仅用于单元测试。
 3. **外部 API 调用前加"配置完整性校验"**：在调用前 `if (!apiKey) return 500 + 明确错误信息`，避免不可理解的底层异常。
+4. **确认环境变量已配置**：排查 500 时，先在 Vercel Dashboard 截图确认变量存在，不要凭记忆判断。
 
 ### 涉及文件
 
