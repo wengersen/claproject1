@@ -82,60 +82,69 @@ export async function POST(req: NextRequest) {
     // 构建用户请求消息
     const userMessage = buildUserMessage(catProfile, healthTags, customInput, dryFoods, wetFoods)
 
-    // Layer 2：LLM 智能排序 + 理由生成（30s 超时保护）
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 30_000)
-
-    let message
-    try {
-      message = await client.chat.completions.create(
-        {
-          model: 'deepseek-chat',
-          max_tokens: 3500,
-          temperature: 0,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userMessage },
-          ],
-        },
-        { signal: controller.signal }
-      )
-    } finally {
-      clearTimeout(timeoutId)
+    // Layer 2：LLM 智能排序 + 理由生成
+    // 开发环境跳过真实 DeepSeek 网络调用，直接生成 mock 排序结果（避免本地网络超时）
+    // 生产环境走真实 API（30s 超时保护）
+    type LLMDryItem = {
+      productId: string; rank: number; reason: string
+      highlights: string[]; warnings: string[]
+      feedingGuide?: { frequency: string; suitablePeriod: string; transitionTip: string; personalNote: string }
     }
+    type LLMWetItem = { productId: string; rank: number; reason: string; highlights: string[]; warnings: string[] }
+    type LLMResult = { dryFood: LLMDryItem[]; wetFood: LLMWetItem[] }
 
-    const rawText = message.choices[0]?.message?.content
-    if (!rawText) {
-      throw new Error('LLM 返回格式异常')
-    }
+    let llmResult: LLMResult
 
-    // 解析 LLM 返回的 JSON
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      throw new Error('无法解析推荐结果')
-    }
-
-    const llmResult = JSON.parse(jsonMatch[0]) as {
-      dryFood: Array<{
-        productId: string
-        rank: number
-        reason: string
-        highlights: string[]
-        warnings: string[]
-        feedingGuide?: {
-          frequency: string
-          suitablePeriod: string
-          transitionTip: string
-          personalNote: string
-        }
-      }>
-      wetFood: Array<{
-        productId: string
-        rank: number
-        reason: string
-        highlights: string[]
-        warnings: string[]
-      }>
+    if (process.env.NODE_ENV === 'development') {
+      // ── DEV MOCK：按数据库顺序直接排列，不调用 DeepSeek ──
+      llmResult = {
+        dryFood: dryFoods.slice(0, 5).map((f, i) => ({
+          productId: f.id,
+          rank: i + 1,
+          reason: `[DEV MOCK] ${f.brand} ${f.productName} 适合您的猫咪。蛋白质来源：${f.proteinSource.join('、')}，功效标签：${f.functionalTags.join('、')}。`,
+          highlights: f.proteinSource.slice(0, 2).concat(f.functionalTags.slice(0, 2)),
+          warnings: [],
+          feedingGuide: {
+            frequency: '每日2-3次，早中晚各一次',
+            suitablePeriod: '成猫全年期均可使用',
+            transitionTip: '建议7-10天完成换粮过渡',
+            personalNote: '[DEV MOCK] 实际推荐理由由 DeepSeek AI 生成，本地开发模式下跳过 API 调用。',
+          },
+        })),
+        wetFood: wetFoods.slice(0, 3).map((f, i) => ({
+          productId: f.id,
+          rank: i + 1,
+          reason: `[DEV MOCK] ${f.brand} ${f.productName} 作为罐头补充推荐。`,
+          highlights: f.proteinSource.slice(0, 2),
+          warnings: [],
+        })),
+      }
+    } else {
+      // ── PRODUCTION：调用真实 DeepSeek API（30s 超时保护）──
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30_000)
+      let message
+      try {
+        message = await client.chat.completions.create(
+          {
+            model: 'deepseek-chat',
+            max_tokens: 3500,
+            temperature: 0,
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: userMessage },
+            ],
+          },
+          { signal: controller.signal }
+        )
+      } finally {
+        clearTimeout(timeoutId)
+      }
+      const rawText = message.choices[0]?.message?.content
+      if (!rawText) throw new Error('LLM 返回格式异常')
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) throw new Error('无法解析推荐结果')
+      llmResult = JSON.parse(jsonMatch[0]) as LLMResult
     }
 
     // 构建最终结果（合并数据库数据 + LLM 输出）
@@ -190,8 +199,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result)
   } catch (err) {
     console.error('[recommend API error]', err)
+    const isDev = process.env.NODE_ENV === 'development'
     const message = err instanceof Error ? err.message : '服务异常'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const stack = isDev && err instanceof Error ? err.stack : undefined
+    // 开发环境暴露完整错误信息，方便排查；生产环境只返回 message
+    return NextResponse.json(
+      { error: message, ...(isDev ? { stack, raw: String(err) } : {}) },
+      { status: 500 }
+    )
   }
 }
 

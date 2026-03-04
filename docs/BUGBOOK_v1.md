@@ -110,3 +110,60 @@ resultId: result.id,
 ```
 
 ---
+
+## BUG-0002 · 本地开发调用 DeepSeek API 超时导致推荐服务 500
+
+**日期**：2026-03-05  
+**严重级别**：🟡 Runtime-Error（本地开发环境，生产环境不影响）  
+**错误信息**：
+
+```
+推荐服务暂时不可用（500）
+AbortError: This operation was aborted
+  at AbortController.abort (node:internal/abort_controller:506:18)
+  at Timeout._onTimeout ...  ← 30s AbortController 超时触发
+```
+
+### 根因分析
+
+`/api/recommend/route.ts` 中对 DeepSeek API 的调用设有 **30 秒 AbortController 超时**。  
+本地开发环境（中国大陆网络）**无法直连** `api.deepseek.com`，请求始终在 30 秒后被强制中止，触发 AbortError → 被外层 `catch` 捕获 → 返回 HTTP 500。
+
+整条链路：
+```
+前端 → POST /api/recommend → DeepSeek fetch（超时30s）→ AbortError → catch → 500
+```
+
+### 为什么生产环境正常？
+
+Vercel 部署在美国/新加坡节点，可直连 DeepSeek 国际 API，延迟 < 10s，30s 超时不触发。
+
+### 修复方案
+
+**开发/生产环境分离**：用 `process.env.NODE_ENV` 判断，开发环境直接生成 Mock 结果跳过网络调用：
+
+```ts
+if (process.env.NODE_ENV === 'development') {
+  // DEV MOCK：按数据库顺序排列，标注 [DEV MOCK] 方便识别
+  llmResult = { dryFood: [...], wetFood: [...] }
+} else {
+  // PRODUCTION：走真实 DeepSeek API + 30s AbortController
+  message = await client.chat.completions.create(...)
+}
+```
+
+Mock 数据包含完整结构（`feedingGuide`、`highlights`、`warnings`），确保前端所有 UI 组件都能正常渲染测试。
+
+### 预防规则
+
+1. **凡依赖外部网络的 API 调用，必须提供 `NODE_ENV=development` 下的 Mock 路径**，不能让本地开发因网络不通而 500。
+2. **错误信息应暴露根因**：catch 块在开发环境应返回 `stack` 和 `raw`，方便快速定位（已实现）。
+3. **本地测试外部 API 连通性**：新增外部依赖时，先用 `curl api.xxx.com` 确认本地可达，不可达则提前设计 mock。
+
+### 涉及文件
+
+| 文件 | 变更 |
+|------|------|
+| `app/api/recommend/route.ts` | 加 `NODE_ENV` 分支，`development` 走 Mock，`production` 走真实 DeepSeek |
+
+---
