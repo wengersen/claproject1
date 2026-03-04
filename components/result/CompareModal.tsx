@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ProductRecommendation } from '@/types/cat'
+import type { ProductRecommendation } from '@/types/cat'
 import type { HealthTag } from '@/types/cat'
 import { formatPrice, formatBrandTier, formatNutrientLevel } from '@/lib/formatters'
 

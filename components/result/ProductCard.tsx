@@ -1,6 +1,6 @@
 'use client'
 
-import { ProductRecommendation } from '@/types/cat'
+import type { ProductRecommendation } from '@/types/cat'
 import { formatPrice, estimateMonthlyDryCost, formatBrandTier } from '@/lib/formatters'
 
 interface ProductCardProps {

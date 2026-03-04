@@ -8,7 +8,7 @@ import type { JWTPayload } from '@/types/auth'
  */
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nutrapaw-dev-secret-key-change-in-production'
-const TOKEN_EXPIRY = '7d' // 7 天
+const TOKEN_EXPIRY = '7d' as const // 7 天
 
 /**
  * 密码加密

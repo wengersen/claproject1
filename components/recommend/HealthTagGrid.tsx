@@ -1,6 +1,7 @@
 'use client'
 
-import { HealthTag, HEALTH_TAG_CONFIG } from '@/types/cat'
+import type { HealthTag } from '@/types/cat'
+import { HEALTH_TAG_CONFIG } from '@/types/cat'
 
 interface HealthTagGridProps {
   selected: HealthTag[]

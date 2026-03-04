@@ -8,10 +8,6 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // 临时：验证构建流水线是否正常（诊断用，确认后删除）
-  typescript: {
-    ignoreBuildErrors: true,
-  },
 }
 
 export default nextConfig

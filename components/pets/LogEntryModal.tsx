@@ -164,7 +164,7 @@ export function LogEntryModal({ petName, petId, userId, onSuccess, onClose }: Lo
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => (setters[key] as (v: string) => void)(opt.value)}
+                      onClick={() => (setters[key] as unknown as (v: string) => void)(opt.value)}
                       className={`px-3 py-2 rounded-xl text-[13px] font-medium border transition-all ${
                         currentValue === opt.value
                           ? 'bg-[#E8721A] text-white border-[#E8721A] shadow-sm'
