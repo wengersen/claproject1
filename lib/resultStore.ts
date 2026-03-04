@@ -131,7 +131,8 @@ export async function saveRecommendation(
   const recommendation: StoredRecommendation = {
     id: uuidv4(),
     userId,
-    resultId: result.id,
+    // result.id 在调用方写入 localStorage 前已由客户端生成，此处必然有值
+    resultId: result.id!,
     catName: result.catProfile.name,
     breed: result.catProfile.breed,
     createdAt: new Date().toISOString(),
