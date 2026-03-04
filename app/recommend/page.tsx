@@ -183,7 +183,10 @@ export default function RecommendPage() {
 
   const step2Valid = healthTags.length > 0
 
-  // 提交推荐
+  // SSE 进度状态
+  const [streamProgress, setStreamProgress] = useState('')
+
+  // 提交推荐（SSE 流式版）
   async function handleSubmit() {
     // 提交前追加健康需求到 localStorage
     writeSession({ healthTags, customInput })
@@ -223,8 +226,9 @@ export default function RecommendPage() {
       return
     }
 
-    // 未命中缓存，调用 API
+    // 未命中缓存，调用 SSE 流式 API
     setStep(3)
+    setStreamProgress('正在连接...')
 
     try {
       const res = await fetch('/api/recommend', {
@@ -233,17 +237,60 @@ export default function RecommendPage() {
         body: JSON.stringify({ catProfile, healthTags, customInput }),
       })
       if (!res.ok) throw new Error(`推荐服务暂时不可用（${res.status}）`)
+      if (!res.body) throw new Error('服务不支持流式响应')
 
-      const result = await res.json()
-      const resultId = generateResultId()
-      localStorage.setItem(`result_${resultId}`, JSON.stringify(result))
+      // ── SSE 流读取 ──────────────────────────────────────
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
 
-      // 保存输入指纹 → resultId 映射
-      saveCacheMapping(inputHash, resultId)
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-      router.push(`/result/${resultId}`)
+        buffer += decoder.decode(value, { stream: true })
+
+        // 按行解析 SSE 格式
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''  // 最后一段可能不完整，留着下次拼接
+
+        let currentEvent = ''
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+          } else if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6)
+            try {
+              const data = JSON.parse(dataStr)
+
+              if (currentEvent === 'progress') {
+                setStreamProgress(data.message ?? '')
+              } else if (currentEvent === 'result') {
+                // 收到完整推荐结果，存储并跳转
+                const resultId = generateResultId()
+                localStorage.setItem(`result_${resultId}`, JSON.stringify(data))
+                saveCacheMapping(inputHash, resultId)
+                router.push(`/result/${resultId}`)
+                return
+              } else if (currentEvent === 'error') {
+                throw new Error(data.message ?? '生成失败，请重试')
+              }
+            } catch (parseErr) {
+              // JSON 解析失败（可能是事件名解析错误），忽略该行
+              if (currentEvent === 'error' || currentEvent === 'result') {
+                console.error('[SSE parse error]', parseErr, dataStr)
+              }
+            }
+          } else if (line === '') {
+            // 空行 = SSE 事件结束，重置事件名
+            currentEvent = ''
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败，请重试')
+      setStreamProgress('')
       setStep(2)
     }
   }
@@ -581,7 +628,9 @@ export default function RecommendPage() {
         )}
 
         {/* ── Step 3：Loading ── */}
-        {!initializing && step === 3 && <LoadingState catName={form.name || '你的猫'} />}
+        {!initializing && step === 3 && (
+          <LoadingState catName={form.name || '你的猫'} streamProgress={streamProgress} />
+        )}
       </main>
     </div>
   )
