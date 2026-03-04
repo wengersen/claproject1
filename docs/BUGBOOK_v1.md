@@ -167,3 +167,46 @@ Mock 数据包含完整结构（`feedingGuide`、`highlights`、`warnings`），
 | `app/api/recommend/route.ts` | 加 `NODE_ENV` 分支，`development` 走 Mock，`production` 走真实 DeepSeek |
 
 ---
+
+## BUG-0003 · Vercel 生产环境推荐 API 500 — 缺少环境变量 + 误用 Mock 掩盖问题
+
+**日期**：2026-03-05  
+**严重级别**：🔴 Build-Blocker（生产环境功能完全不可用）  
+**错误信息**：
+
+```
+推荐服务暂时不可用（500）
+```
+
+### 根因分析（双重问题）
+
+**问题 A — Vercel 未配置 `DEEPSEEK_API_KEY`**：
+- `.env.local` 只在本地 `next dev` 时生效，**不会被推送到 Vercel**
+- Vercel 需要在 Dashboard → Settings → Environment Variables 中**单独配置**
+- 缺少 API Key 时，OpenAI SDK `new OpenAI({ apiKey: undefined })` 会在调用时抛异常
+
+**问题 B — BUG-0002 中错误地引入了 Mock 模式**：
+- 本地 500 的真正原因是 30 秒超时，但修复时**误判为"本地网络无法连接 DeepSeek"并引入了 Mock 分支**
+- Mock 模式让本地测试通过了，但**掩盖了 Vercel 端同样的 500 问题**
+- 用户要求本地也走真实 API，说明 30 秒超时只是偶发问题，不应用 Mock 绕过
+
+### 修复方案
+
+1. **移除 Mock 分支**：删除 `NODE_ENV === 'development'` 条件分支，所有环境统一调用 DeepSeek
+2. **超时改为 45 秒**：`setTimeout(() => controller.abort(), 45_000)`
+3. **增加 API Key 前置校验**：在调用前检查 `process.env.DEEPSEEK_API_KEY`，缺失时返回明确的 500 错误信息
+4. **Vercel 配置环境变量**：用户需手动在 Dashboard 中添加 `DEEPSEEK_API_KEY`
+
+### 预防规则
+
+1. **`.env.local` 里的变量必须同步配置到 Vercel**：每次新增 `.env.local` 变量时，立即提醒用户在 Vercel Dashboard 同步添加。
+2. **不要用 Mock 掩盖网络问题**：如果外部 API 调不通，应排查网络原因（代理/DNS/API Key），不应直接跳过调用。Mock 仅用于单元测试。
+3. **外部 API 调用前加"配置完整性校验"**：在调用前 `if (!apiKey) return 500 + 明确错误信息`，避免不可理解的底层异常。
+
+### 涉及文件
+
+| 文件 | 变更 |
+|------|------|
+| `app/api/recommend/route.ts` | 移除 Mock 分支，统一走真实 API，超时改 45s，加 API Key 校验 |
+
+---

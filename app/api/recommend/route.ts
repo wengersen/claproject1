@@ -82,9 +82,12 @@ export async function POST(req: NextRequest) {
     // 构建用户请求消息
     const userMessage = buildUserMessage(catProfile, healthTags, customInput, dryFoods, wetFoods)
 
-    // Layer 2：LLM 智能排序 + 理由生成
-    // 开发环境跳过真实 DeepSeek 网络调用，直接生成 mock 排序结果（避免本地网络超时）
-    // 生产环境走真实 API（30s 超时保护）
+    // Layer 2：LLM 智能排序 + 理由生成（45s 超时保护）
+    // 所有环境统一走真实 DeepSeek API
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return NextResponse.json({ error: '服务配置错误：缺少 DEEPSEEK_API_KEY 环境变量' }, { status: 500 })
+    }
+
     type LLMDryItem = {
       productId: string; rank: number; reason: string
       highlights: string[]; warnings: string[]
@@ -93,58 +96,30 @@ export async function POST(req: NextRequest) {
     type LLMWetItem = { productId: string; rank: number; reason: string; highlights: string[]; warnings: string[] }
     type LLMResult = { dryFood: LLMDryItem[]; wetFood: LLMWetItem[] }
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 45_000)
     let llmResult: LLMResult
 
-    if (process.env.NODE_ENV === 'development') {
-      // ── DEV MOCK：按数据库顺序直接排列，不调用 DeepSeek ──
-      llmResult = {
-        dryFood: dryFoods.slice(0, 5).map((f, i) => ({
-          productId: f.id,
-          rank: i + 1,
-          reason: `[DEV MOCK] ${f.brand} ${f.productName} 适合您的猫咪。蛋白质来源：${f.proteinSource.join('、')}，功效标签：${f.functionalTags.join('、')}。`,
-          highlights: f.proteinSource.slice(0, 2).concat(f.functionalTags.slice(0, 2)),
-          warnings: [],
-          feedingGuide: {
-            frequency: '每日2-3次，早中晚各一次',
-            suitablePeriod: '成猫全年期均可使用',
-            transitionTip: '建议7-10天完成换粮过渡',
-            personalNote: '[DEV MOCK] 实际推荐理由由 DeepSeek AI 生成，本地开发模式下跳过 API 调用。',
-          },
-        })),
-        wetFood: wetFoods.slice(0, 3).map((f, i) => ({
-          productId: f.id,
-          rank: i + 1,
-          reason: `[DEV MOCK] ${f.brand} ${f.productName} 作为罐头补充推荐。`,
-          highlights: f.proteinSource.slice(0, 2),
-          warnings: [],
-        })),
-      }
-    } else {
-      // ── PRODUCTION：调用真实 DeepSeek API（30s 超时保护）──
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 30_000)
-      let message
-      try {
-        message = await client.chat.completions.create(
-          {
-            model: 'deepseek-chat',
-            max_tokens: 3500,
-            temperature: 0,
-            messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user', content: userMessage },
-            ],
-          },
-          { signal: controller.signal }
-        )
-      } finally {
-        clearTimeout(timeoutId)
-      }
+    try {
+      const message = await client.chat.completions.create(
+        {
+          model: 'deepseek-chat',
+          max_tokens: 3500,
+          temperature: 0,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userMessage },
+          ],
+        },
+        { signal: controller.signal }
+      )
       const rawText = message.choices[0]?.message?.content
       if (!rawText) throw new Error('LLM 返回格式异常')
       const jsonMatch = rawText.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('无法解析推荐结果')
       llmResult = JSON.parse(jsonMatch[0]) as LLMResult
+    } finally {
+      clearTimeout(timeoutId)
     }
 
     // 构建最终结果（合并数据库数据 + LLM 输出）
