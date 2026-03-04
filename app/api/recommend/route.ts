@@ -135,9 +135,9 @@ export async function POST(req: NextRequest) {
 
     const mapRecommendations = (items: typeof llmResult.dryFood, isDry: boolean): ProductRecommendation[] =>
       items
-        .map((item) => {
+        .flatMap((item): ProductRecommendation[] => {
           const product = productMap.get(item.productId)
-          if (!product) return null
+          if (!product) return []
 
           let feedingGuide: FeedingGuide | undefined
           if (isDry && item.feedingGuide) {
@@ -153,16 +153,15 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          return {
+          return [{
             product,
             rank: item.rank,
             reason: item.reason,
             highlights: item.highlights || [],
             warnings: item.warnings || [],
             feedingGuide,
-          }
+          }]
         })
-        .filter((item): item is ProductRecommendation => item !== null)
         .sort((a, b) => a.rank - b.rank)
         .slice(0, 5)
 
