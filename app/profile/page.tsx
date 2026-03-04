@@ -8,44 +8,40 @@ import type { Pet } from '@/types/pet'
 import { AddPetModal } from '@/components/pets/AddPetModal'
 import { getPets } from '@/lib/petLocalStore'
 import { formatAgeFromBirthday } from '@/lib/formatters'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function ProfilePage() {
   const router = useRouter()
-  const [user, setUser] = useState<{ username: string; nickname?: string; email?: string } | null>(null)
+  const { user, logout, initialized } = useAuth()
   const [recommendations, setRecommendations] = useState<StoredRecommendation[]>([])
   const [pets, setPets] = useState<Pet[]>([])
   const [showAddPet, setShowAddPet] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user')
-    if (!userStr) {
-      router.push('/')
-      return
-    }
-    try {
-      setUser(JSON.parse(userStr))
-    } catch {
+    if (!initialized) return
+    if (!user) {
       router.push('/')
       return
     }
 
     // 直接从 localStorage 读取宠物列表（无需 API，数据持久化在本地）
-    const parsedUser = JSON.parse(userStr) as { username: string; nickname?: string; email?: string }
-    setPets(getPets(parsedUser.username))
+    setPets(getPets(user.username))
 
     // 从 localStorage 读取所有保存的推荐结果
+    // resultId = localStorage key 后缀（result_<resultId>），不再依赖 data.id
     const savedRecs: StoredRecommendation[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
       if (key?.startsWith('result_')) {
         try {
           const data = JSON.parse(localStorage.getItem(key) || '')
-          if (data && data.id) {
+          if (data && data.catProfile) {
+            const resultId = key.replace(/^result_/, '')
             savedRecs.push({
               id: key,
               userId: '',
-              resultId: data.id,
+              resultId,
               catName: data.catProfile?.name || '未知',
               breed: data.catProfile?.breed || '未知',
               createdAt: data.generatedAt || new Date().toISOString(),
@@ -59,11 +55,10 @@ export default function ProfilePage() {
     savedRecs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     setRecommendations(savedRecs)
     setLoading(false)
-  }, [router])
+  }, [initialized, user, router])
 
   function handleLogout() {
-    localStorage.removeItem('sessionToken')
-    localStorage.removeItem('user')
+    logout()
     router.push('/')
   }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { saveRecommendation } from '@/lib/resultStore'
+import { saveRecommendation, getUserById, createUserFromJwt } from '@/lib/resultStore'
 import { verifyToken } from '@/lib/auth'
 import type { RecommendResult } from '@/types/cat'
 
@@ -38,6 +38,12 @@ export async function POST(req: NextRequest) {
         { error: '无效或过期的 token' },
         { status: 401 }
       )
+    }
+
+    // 若服务端内存 Map 重启后为空（clientHash 路径登录场景），
+    // 从 JWT payload 重建最小用户对象写回，确保其他依赖内存的操作不出错
+    if (!getUserById(payload.userId)) {
+      createUserFromJwt(payload.userId, payload.username)
     }
 
     // 验证结果数据

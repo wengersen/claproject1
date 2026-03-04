@@ -84,7 +84,7 @@ export function SignupModal({ onSuccess, onSwitchToLogin, onClose }: SignupModal
           <div className="text-4xl mb-3">🐾</div>
           <h2 className="text-[22px] font-bold text-[#1A1815]">保存你的推荐</h2>
           <p className="text-[14px] text-[#78746C] mt-1.5">
-            注册后随时查看历史推荐，跨设备同步
+            注册后可保存推荐记录、建立猫咪健康档案
           </p>
         </div>
 

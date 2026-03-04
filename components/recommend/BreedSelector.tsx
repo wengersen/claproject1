@@ -38,8 +38,8 @@ export function BreedSelector({ value, onChange }: BreedSelectorProps) {
 
   return (
     <div ref={ref} className="relative">
-      <label className="block text-[13px] font-medium text-[#78746C] mb-2">
-        猫咪品种
+      <label className="block text-[12px] font-semibold text-[#78746C] mb-2 uppercase tracking-wide">
+        品种
       </label>
 
       {/* 选中后显示 */}

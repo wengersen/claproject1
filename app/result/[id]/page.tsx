@@ -13,51 +13,62 @@ import { formatAgeFromBirthday } from '@/lib/formatters'
 import type { AuthResponse } from '@/types/auth'
 import type { Pet } from '@/types/pet'
 import { getPets, savePet, generateId, setCurrentMainFood } from '@/lib/petLocalStore'
+import { useAuth } from '@/hooks/useAuth'
 
 type AuthModal = 'signup' | 'login' | null
 type PetAddStatus = 'idle' | 'added' | 'error'
+// 未登录时点"加入档案"的 pending 意图标记
+type PendingAction = 'addPet' | null
+// 对比上限 toast 显示状态
+type CompareToast = 'hidden' | 'visible'
 
 
 
 export default function ResultPage() {
   const params = useParams()
   const router = useRouter()
+  // resultId = URL 中的 id 参数，也是 localStorage key 的后缀
+  const resultId = params.id as string
+  const { user: savedUser, sessionToken, logout, login } = useAuth()
   const [result, setResult] = useState<RecommendResult | null>(null)
   const [comparing, setComparing] = useState<ProductRecommendation[]>([])
   const [showModal, setShowModal] = useState(false)
   const [copied, setCopied] = useState(false)
   const [authModal, setAuthModal] = useState<AuthModal>(null)
-  const [savedUser, setSavedUser] = useState<{ username: string; nickname?: string } | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [petAddStatus, setPetAddStatus] = useState<PetAddStatus>('idle')
   const [addedPetId, setAddedPetId] = useState<string | null>(null)
   const [linkedPet, setLinkedPet] = useState<Pet | null>(null)
   const [setFoodConfirm, setSetFoodConfirm] = useState<ProductRecommendation | null>(null)
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
+  const [notFound, setNotFound] = useState(false)
+  const [compareToast, setCompareToast] = useState<CompareToast>('hidden')
 
   useEffect(() => {
-    const id = params.id as string
-    const stored = localStorage.getItem(`result_${id}`)
+    const stored = localStorage.getItem(`result_${resultId}`)
     if (!stored) {
-      router.push('/recommend')
+      // 数据不在本地（他人分享链接，或已清除缓存）
+      // 显示友好提示，不强制 redirect
+      setNotFound(true)
       return
     }
     try {
       setResult(JSON.parse(stored))
     } catch {
-      router.push('/recommend')
+      setNotFound(true)
     }
-    // 检查已登录状态
-    const userStr = localStorage.getItem('user')
-    if (userStr) {
-      try { setSavedUser(JSON.parse(userStr)) } catch { /* ignore */ }
-    }
-  }, [params.id, router])
+  }, [resultId, router])
 
   function toggleCompare(rec: ProductRecommendation) {
     setComparing((prev) => {
       const exists = prev.find((r) => r.product.id === rec.product.id)
       if (exists) return prev.filter((r) => r.product.id !== rec.product.id)
-      if (prev.length >= 3) return prev // 最多3个
+      if (prev.length >= 3) {
+        // 已满3个：显示 toast 提示
+        setCompareToast('visible')
+        setTimeout(() => setCompareToast('hidden'), 2500)
+        return prev
+      }
       return [...prev, rec]
     })
   }
@@ -78,8 +89,13 @@ export default function ResultPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionToken, result }),
       })
-      setSaveStatus(res.ok ? 'saved' : 'error')
-      setTimeout(() => setSaveStatus('idle'), 3000)
+      if (res.ok) {
+        setSaveStatus('saved')
+        // saved 状态永久保留，不再自动复位为 idle
+      } else {
+        setSaveStatus('error')
+        setTimeout(() => setSaveStatus('idle'), 3000)
+      }
     } catch {
       setSaveStatus('error')
       setTimeout(() => setSaveStatus('idle'), 3000)
@@ -87,25 +103,29 @@ export default function ResultPage() {
   }
 
   function handleAuthSuccess(authResponse: AuthResponse) {
-    const user = authResponse.user
-    setSavedUser({ username: user.username, nickname: user.nickname })
+    const { username, nickname, email } = authResponse.user
+    // 同步登录态到 useAuth（写入 localStorage + 更新 React state）
+    login({ username, nickname, email }, authResponse.sessionToken)
     setAuthModal(null)
+    // 保存推荐
     doSaveRecommendation(authResponse.sessionToken)
+    // 处理登录前的 pending 意图（如：加入档案）
+    if (pendingAction === 'addPet') {
+      setPendingAction(null)
+      doAddToPetProfile(username)
+    }
   }
 
   function handleSaveClick() {
-    if (savedUser) {
-      const sessionToken = localStorage.getItem('sessionToken')
-      if (sessionToken) doSaveRecommendation(sessionToken)
+    if (savedUser && sessionToken) {
+      doSaveRecommendation(sessionToken)
     } else {
       setAuthModal('signup')
     }
   }
 
   function handleLogout() {
-    localStorage.removeItem('sessionToken')
-    localStorage.removeItem('user')
-    setSavedUser(null)
+    logout()
     setSaveStatus('idle')
   }
 
@@ -127,59 +147,51 @@ export default function ResultPage() {
     setSetFoodConfirm(null)
   }
 
-  // 当 result 加载后，检查是否已有关联此 resultId 的宠物档案（防止刷新后重复添加）
+  // 当 result 和 savedUser 就绪后，检查是否已有关联此推荐或同名猫的宠物档案
   useEffect(() => {
-    if (!result) return
-    const userStr = localStorage.getItem('user')
-    if (!userStr) return
-    try {
-      const { username } = JSON.parse(userStr) as { username: string }
-      const found = getPets(username).find((p) => p.resultId === result.id)
-      if (found) {
-        setLinkedPet(found)
-        setAddedPetId(found.id)
-        setPetAddStatus('added')
-      }
-    } catch { /* ignore */ }
-  }, [result])
+    if (!result || !savedUser) return
+    const pets = getPets(savedUser.username)
+    // 优先匹配同一 resultId（URL id），其次匹配同名猫（跨推荐场景）
+    const found = pets.find(
+      (p) => p.resultId === resultId || p.name === result.catProfile.name
+    )
+    if (found) {
+      setLinkedPet(found)
+      setAddedPetId(found.id)
+      setPetAddStatus('added')
+    }
+  }, [result, savedUser, resultId])
 
-  function handleAddToPetProfile() {
+  // 核心加档案逻辑，可以传入外部 username（登录刚完成时 savedUser 还未 re-render）
+  function doAddToPetProfile(username: string) {
     if (!result) return
-    // 检查登录状态（需要 username 作为 localStorage 分区 key）
-    const userStr = localStorage.getItem('user')
-    if (!userStr) {
-      setAuthModal('login')
+    const { catProfile } = result
+    const existingPets = getPets(username)
+    const duplicate = existingPets.find(
+      (p) => p.resultId === resultId || p.name === catProfile.name
+    )
+    if (duplicate) {
+      setAddedPetId(duplicate.id)
+      setPetAddStatus('added')
       return
     }
     try {
-      const parsedUser = JSON.parse(userStr) as { username: string }
-      const { catProfile } = result
-      // 去重：检查同名或同 resultId 的宠物是否已存在
-      const existingPets = getPets(parsedUser.username)
-      const duplicate = existingPets.find(
-        (p) => p.resultId === result.id || p.name === catProfile.name
-      )
-      if (duplicate) {
-        setAddedPetId(duplicate.id)
-        setPetAddStatus('added')
-        return
-      }
       const now = new Date().toISOString()
       const newPet: Pet = {
         id: generateId(),
-        userId: parsedUser.username,
+        userId: username,
         name: catProfile.name,
         breed: catProfile.breed,
         gender: catProfile.gender,
         neutered: catProfile.neutered,
         birthday: catProfile.birthday ?? '',
         weightKg: catProfile.weightKg,
-        resultId: result.id,   // 关联推荐来源，用于档案页"推荐来源"卡片
+        resultId,
         foodHistory: [],
         createdAt: now,
         updatedAt: now,
       }
-      savePet(parsedUser.username, newPet)
+      savePet(username, newPet)
       setLinkedPet(newPet)
       setAddedPetId(newPet.id)
       setPetAddStatus('added')
@@ -187,6 +199,78 @@ export default function ResultPage() {
       setPetAddStatus('error')
       setTimeout(() => setPetAddStatus('idle'), 4000)
     }
+  }
+
+  function handleAddToPetProfile() {
+    if (!result) return
+    // 未登录：记录 pending 意图，弹登录框
+    if (!savedUser) {
+      setPendingAction('addPet')
+      setAuthModal('login')
+      return
+    }
+    const { catProfile } = result
+    // 去重：检查同名或同 resultId 的宠物是否已存在
+    const existingPets = getPets(savedUser.username)
+    const duplicate = existingPets.find(
+      (p) => p.resultId === resultId || p.name === catProfile.name
+    )
+    if (duplicate) {
+      setAddedPetId(duplicate.id)
+      setPetAddStatus('added')
+      return
+    }
+    try {
+      const now = new Date().toISOString()
+      const newPet: Pet = {
+        id: generateId(),
+        userId: savedUser.username,
+        name: catProfile.name,
+        breed: catProfile.breed,
+        gender: catProfile.gender,
+        neutered: catProfile.neutered,
+        birthday: catProfile.birthday ?? '',
+        weightKg: catProfile.weightKg,
+        resultId,   // 关联推荐来源：使用 URL 中的 resultId（客户端生成，唯一）
+        foodHistory: [],
+        createdAt: now,
+        updatedAt: now,
+      }
+      savePet(savedUser.username, newPet)
+      setLinkedPet(newPet)
+      setAddedPetId(newPet.id)
+      setPetAddStatus('added')
+    } catch {
+      setPetAddStatus('error')
+      setTimeout(() => setPetAddStatus('idle'), 4000)
+    }
+  }
+
+  // 分享链接但数据不在本地（他人打开，或缓存已清除）
+  if (notFound) {
+    return (
+      <div className="min-h-screen bg-[#FFF8F3] flex items-center justify-center px-4">
+        <div className="bg-white rounded-3xl shadow-xl max-w-[440px] w-full p-10 text-center space-y-5">
+          <div className="text-5xl">🐱</div>
+          <div>
+            <h2 className="text-[20px] font-bold text-[#1A1815]">推荐结果已过期</h2>
+            <p className="text-[14px] text-[#78746C] mt-2 leading-relaxed">
+              该推荐结果保存在分享者的本地设备上，<br />
+              无法直接查看。请重新为你的猫咪生成专属方案！
+            </p>
+          </div>
+          <Link
+            href="/recommend"
+            className="inline-flex items-center gap-2 bg-[#E8721A] text-white px-6 py-3 rounded-xl text-[15px] font-semibold shadow-[0_4px_20px_rgba(232,114,26,0.3)] hover:bg-[#C45C0A] transition-colors"
+          >
+            为我的猫生成推荐 →
+          </Link>
+          <p className="text-[12px] text-[#A8A49C]">
+            完全免费 · 无需注册 · 30秒完成
+          </p>
+        </div>
+      </div>
+    )
   }
 
   if (!result) {
@@ -492,6 +576,20 @@ export default function ResultPage() {
           onClose={() => setAuthModal(null)}
         />
       )}
+
+      {/* 对比上限 Toast */}
+      <div
+        className={`fixed bottom-28 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+          compareToast === 'visible'
+            ? 'opacity-100 translate-y-0 pointer-events-auto'
+            : 'opacity-0 translate-y-2 pointer-events-none'
+        }`}
+      >
+        <div className="bg-[#1A1815] text-white text-[13px] font-medium px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 whitespace-nowrap">
+          <span>⚠️</span>
+          <span>最多同时对比 3 款产品</span>
+        </div>
+      </div>
     </div>
   )
 }

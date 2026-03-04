@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { Pet } from '@/types/pet'
 import { savePet, generateId } from '@/lib/petLocalStore'
+import { BreedSelector } from '@/components/recommend/BreedSelector'
 
 interface AddPetModalProps {
   /** 当前登录用户的 username，用于 localStorage key 分区 */
@@ -25,6 +26,10 @@ export function AddPetModal({ username, onSuccess, onClose }: AddPetModalProps) 
     e.preventDefault()
     setError('')
 
+    if (!breed) {
+      setError('请选择猫咪品种')
+      return
+    }
     if (!birthday) {
       setError('请选择生日日期')
       return
@@ -85,35 +90,23 @@ export function AddPetModal({ username, onSuccess, onClose }: AddPetModalProps) 
         </div>
 
         <form onSubmit={handleSubmit} className="px-7 pb-7 pt-5 space-y-5">
-          {/* 名字 + 品种 */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[12px] font-semibold text-[#78746C] mb-1.5 uppercase tracking-wide">
-                名字
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="如：橘墩"
-                required
-                className="w-full border border-[#E8E6E1] rounded-xl px-3 py-2.5 text-[14px] text-[#1A1815] placeholder-[#D1CEC7] focus:outline-none focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-[12px] font-semibold text-[#78746C] mb-1.5 uppercase tracking-wide">
-                品种
-              </label>
-              <input
-                type="text"
-                value={breed}
-                onChange={(e) => setBreed(e.target.value)}
-                placeholder="如：英国短毛猫"
-                required
-                className="w-full border border-[#E8E6E1] rounded-xl px-3 py-2.5 text-[14px] text-[#1A1815] placeholder-[#D1CEC7] focus:outline-none focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 transition-all"
-              />
-            </div>
+          {/* 名字 */}
+          <div>
+            <label className="block text-[12px] font-semibold text-[#78746C] mb-1.5 uppercase tracking-wide">
+              名字
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="如：橘墩"
+              required
+              className="w-full border border-[#E8E6E1] rounded-xl px-3 py-2.5 text-[14px] text-[#1A1815] placeholder-[#D1CEC7] focus:outline-none focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 transition-all"
+            />
           </div>
+
+          {/* 品种选择器 */}
+          <BreedSelector value={breed} onChange={setBreed} />
 
           {/* 生日 + 体重 */}
           <div className="grid grid-cols-2 gap-3">

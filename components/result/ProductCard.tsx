@@ -99,11 +99,11 @@ export function ProductCard({
         </div>
       )}
 
-      <div className="p-5 md:p-6">
+      <div className="p-4">
         <div className="flex gap-4">
           {/* 产品图片 */}
-          <div className="w-20 h-20 md:w-24 md:h-24 bg-[#F4F3F0] rounded-xl flex items-center justify-center shrink-0">
-            <span className="text-4xl">{product.type === 'dry' ? '🐟' : '🥫'}</span>
+          <div className="w-14 h-14 bg-[#F4F3F0] rounded-xl flex items-center justify-center shrink-0 mt-1">
+            <span className="text-3xl">{product.type === 'dry' ? '🐟' : '🥫'}</span>
           </div>
 
           {/* 主要信息 */}
@@ -118,14 +118,9 @@ export function ProductCard({
                     </span>
                   )}
                 </div>
-                <h3 className="text-[17px] font-semibold text-[#2E2B27] leading-snug">
+                <h3 className="text-[16px] font-semibold text-[#2E2B27] leading-snug">
                   {product.productName}
                 </h3>
-                {product.weightOptions && (
-                  <p className="text-[12px] text-[#A8A49C] mt-0.5">
-                    规格：{product.weightOptions.join(' / ')}
-                  </p>
-                )}
               </div>
 
               {/* 价格 */}
@@ -146,77 +141,59 @@ export function ProductCard({
               </div>
             </div>
 
-            {/* 推荐理由 */}
-            <div className="mt-3 bg-[#FFF8F3] rounded-xl px-4 py-3 border-l-4 border-[#E8721A]">
-              <div className="flex gap-2">
-                <span className="text-[#E8721A] text-[14px] shrink-0">✦</span>
-                <p className="text-[13px] text-[#4A4641] leading-relaxed italic">{reason}</p>
-              </div>
-            </div>
+            {/* 推荐理由（精简，限 2 行） */}
+            <p className="mt-2 text-[12px] text-[#78746C] leading-snug line-clamp-2">{reason}</p>
 
-            {/* 成分亮点 */}
-            <div className="mt-3 flex flex-wrap gap-2">
+            {/* Tags：成分亮点 */}
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
               {highlights.map((h, i) => (
                 <span
                   key={i}
-                  className="bg-[#FFF8F3] border border-[#FFB87A] text-[#9A4208] rounded-full px-2.5 py-1 text-[12px]"
+                  className="bg-[#FFF8F3] border border-[#FFB87A] text-[#9A4208] rounded-full px-2.5 py-0.5 text-[12px]"
                 >
                   {h}
                 </span>
               ))}
               {product.grainFree && !highlights.includes('无谷物') && (
-                <span className="bg-[#F0FDF4] text-[#166534] rounded-full px-2.5 py-1 text-[12px]">
+                <span className="bg-[#F0FDF4] text-[#166534] rounded-full px-2.5 py-0.5 text-[12px]">
                   无谷物
                 </span>
               )}
             </div>
 
-            {/* 警告 */}
-            {warnings && warnings.length > 0 && (
-              <div className="mt-3 flex gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                <span className="text-amber-500 shrink-0">⚠️</span>
-                <p className="text-[12px] text-amber-800">{warnings.join('；')}</p>
-              </div>
-            )}
-
-            {/* 喂食建议区块（仅主粮 dry food + 有 feedingGuide 数据时展示） */}
+            {/* 喂食建议：喂食量 + 频次 + 适合期间 + 个性化备注 */}
             {product.type === 'dry' && feedingGuide && feedingGuide.dailyGramsBase > 0 && (
-              <div className="mt-4 bg-[#F4F3F0] rounded-xl px-4 py-3 space-y-2">
-                <p className="text-[11px] font-semibold text-[#78746C] uppercase tracking-wide">每日喂食建议</p>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-[22px] font-bold font-mono text-[#E8721A]">
-                    {feedingGuide.dailyGramsMin}–{feedingGuide.dailyGramsMax}
+              <div className="mt-2.5 bg-[#F4F3F0] rounded-xl px-3 py-2.5 space-y-1.5">
+                {/* 第一行：喂食量 + 频次 */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-[13px] text-[#78746C]">
+                    每日喂食：
+                    <span className="font-bold text-[#E8721A] font-mono">
+                      {feedingGuide.dailyGramsMin}–{feedingGuide.dailyGramsMax}g
+                    </span>
                   </span>
-                  <span className="text-[13px] text-[#78746C]">克/天</span>
-                  <span className="text-[11px] text-[#A8A49C] ml-1">
-                    （基准 {feedingGuide.dailyGramsBase}g）
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                   {feedingGuide.frequency && (
-                    <div>
-                      <p className="text-[10px] text-[#A8A49C]">喂食频次</p>
-                      <p className="text-[12px] text-[#4A4641]">{feedingGuide.frequency}</p>
-                    </div>
-                  )}
-                  {feedingGuide.suitablePeriod && (
-                    <div>
-                      <p className="text-[10px] text-[#A8A49C]">适合期间</p>
-                      <p className="text-[12px] text-[#4A4641]">{feedingGuide.suitablePeriod}</p>
-                    </div>
+                    <span className="text-[12px] text-[#A8A49C]">{feedingGuide.frequency}</span>
                   )}
                 </div>
-                {feedingGuide.transitionTip && (
-                  <p className="text-[12px] text-[#78746C] flex items-start gap-1.5">
-                    <span className="text-[#E8721A] shrink-0">⇄</span>
-                    {feedingGuide.transitionTip}
-                  </p>
+                {/* 第二行：适合期间 */}
+                {feedingGuide.suitablePeriod && (
+                  <p className="text-[12px] text-[#A8A49C]">适合期间：{feedingGuide.suitablePeriod}</p>
                 )}
+                {/* 第三行：个性化备注 */}
                 {feedingGuide.personalNote && (
-                  <p className="text-[12px] text-[#A8A49C] italic border-t border-[#E8E6E1] pt-2">
+                  <p className="text-[12px] text-[#78746C] italic border-t border-[#E8E6E1] pt-1.5">
                     {feedingGuide.personalNote}
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* 注意事项 */}
+            {warnings && warnings.length > 0 && (
+              <div className="mt-2 flex gap-1.5 items-start">
+                <span className="text-amber-500 text-[12px] shrink-0 mt-px">⚠️</span>
+                <p className="text-[12px] text-amber-700 leading-snug">{warnings.join('；')}</p>
               </div>
             )}
 

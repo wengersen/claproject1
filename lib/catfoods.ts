@@ -22,65 +22,41 @@ export function filterCandidates(
       food.lifeStage.includes(ageStage as LifeStage)
   )
 
-  // 健康标签加权筛选
-  // 如果有泌尿道标签，优先筛选低磷/低镁产品
-  if (healthTags.includes('urinary')) {
-    const urinäryCandidates = candidates.filter(
-      (food) =>
-        food.phosphorusLevel === 'low' ||
-        food.magnesiumLevel === 'low' ||
-        food.functionalTags.includes('urinary')
-    )
-    // 至少保留一部分结果，防止候选集为空
-    if (urinäryCandidates.length >= 4) {
-      candidates = urinäryCandidates
-    }
-  }
+  // ── 健康标签加权筛选 ──────────────────────────────────────────────────────
+  // 策略：各标签独立评分（0/1/2分），最终按总分排序，避免多标签串行缩减导致候选集过小。
+  // 同时对"强匹配"产品做加权，确保关键筛选条件优先级高于通用产品。
 
-  // 如果有体重管理标签
-  if (healthTags.includes('weight')) {
-    const weightCandidates = candidates.filter(
-      (food) =>
-        food.functionalTags.includes('weight') ||
-        food.calories < 360
-    )
-    if (weightCandidates.length >= 3) {
-      candidates = candidates.filter(
-        (food) =>
-          food.functionalTags.includes('weight') ||
-          food.calories < 380 // 稍宽松以保证候选集
-      )
-    }
-  }
+  const scored = candidates.map((food) => {
+    // 基础分：功效标签匹配数（每匹配1个 +1分）
+    let score = healthTags.filter((tag) => food.functionalTags.includes(tag)).length
 
-  // 如果有过敏标签，筛选低过敏原或单一蛋白质产品
-  if (healthTags.includes('allergy')) {
-    const allergyCandidates = candidates.filter((food) =>
-      food.functionalTags.includes('allergy') ||
-      food.proteinSource.length === 1
-    )
-    if (allergyCandidates.length >= 3) {
-      candidates = allergyCandidates
+    // 额外加权：泌尿道 —— 低磷/低镁优先（+2分）
+    if (healthTags.includes('urinary')) {
+      if (food.phosphorusLevel === 'low') score += 2
+      if (food.magnesiumLevel === 'low') score += 1
     }
-  }
 
-  // 老年猫：筛选低磷产品
-  if (healthTags.includes('senior') || ageStage === 'senior') {
-    const seniorCandidates = candidates.filter(
-      (food) =>
-        food.phosphorusLevel === 'low' ||
-        food.functionalTags.includes('senior')
-    )
-    if (seniorCandidates.length >= 3) {
-      candidates = seniorCandidates
+    // 额外加权：体重管理 —— 低热量（< 360 kcal）优先（+2分），< 380 kcal（+1分）
+    // 修复原Bug：不再先筛后放宽，改为统一打分保证候选集完整
+    if (healthTags.includes('weight')) {
+      if (food.calories < 360) score += 2
+      else if (food.calories < 380) score += 1
     }
-  }
 
-  // 按标签匹配度排序（匹配标签越多越靠前）
-  const scored = candidates.map((food) => ({
-    food,
-    score: healthTags.filter((tag) => food.functionalTags.includes(tag)).length,
-  }))
+    // 额外加权：过敏 —— 单一蛋白质来源优先（+2分）
+    if (healthTags.includes('allergy')) {
+      if (food.proteinSource.length === 1) score += 2
+    }
+
+    // 额外加权：老年猫 —— 低磷优先（+2分）
+    if (healthTags.includes('senior') || ageStage === 'senior') {
+      if (food.phosphorusLevel === 'low') score += 2
+    }
+
+    return { food, score }
+  })
+
+  // 按总分降序排列（分数相同时保持原始顺序）
   scored.sort((a, b) => b.score - a.score)
 
   const sorted = scored.map((s) => s.food)

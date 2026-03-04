@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { filterCandidates } from '@/lib/catfoods'
 import type { RecommendRequest, RecommendResult, ProductRecommendation, CatFood, FeedingGuide, CatProfile } from '@/types/cat'
-import { generateResultId, calcAgeMonthsFromBirthday } from '@/lib/formatters'
+import { calcAgeMonthsFromBirthday } from '@/lib/formatters'
 
 const client = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
@@ -82,15 +82,27 @@ export async function POST(req: NextRequest) {
     // 构建用户请求消息
     const userMessage = buildUserMessage(catProfile, healthTags, customInput, dryFoods, wetFoods)
 
-    // Layer 2：LLM 智能排序 + 理由生成
-    const message = await client.chat.completions.create({
-      model: 'deepseek-chat',
-      max_tokens: 3500,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-    })
+    // Layer 2：LLM 智能排序 + 理由生成（30s 超时保护）
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30_000)
+
+    let message
+    try {
+      message = await client.chat.completions.create(
+        {
+          model: 'deepseek-chat',
+          max_tokens: 3500,
+          temperature: 0,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userMessage },
+          ],
+        },
+        { signal: controller.signal }
+      )
+    } finally {
+      clearTimeout(timeoutId)
+    }
 
     const rawText = message.choices[0]?.message?.content
     if (!rawText) {
@@ -166,7 +178,6 @@ export async function POST(req: NextRequest) {
         .slice(0, 5)
 
     const result: RecommendResult = {
-      id: generateResultId(),
       catProfile,
       healthTags,
       dryFood: mapRecommendations(llmResult.dryFood || [], true),
@@ -207,8 +218,20 @@ function buildUserMessage(
     balanced: '日常均衡',
   }
 
-  const formatFood = (food: CatFood) =>
-    `- ID: ${food.id}
+  const formatFood = (food: CatFood) => {
+    // 价格来源与更新时间（用于 AI 推荐理由中说明数据时效性）
+    const priceSourceLabel = food.priceSource === 'jd'
+      ? '京东'
+      : food.priceSource === 'taobao'
+      ? '淘宝/天猫'
+      : food.priceSource === 'official'
+      ? '官网'
+      : '市场参考'
+    const priceUpdatedLabel = food.priceUpdatedAt
+      ? food.priceUpdatedAt.slice(0, 7) // 显示到年月，如 "2025-03"
+      : '未知'
+
+    return `- ID: ${food.id}
   产品: ${food.brand} ${food.productName}
   类型: ${food.type === 'dry' ? '主粮' : '罐头'} | 品牌档位: ${food.brandTier}
   蛋白质来源: ${food.proteinSource.join('、')}
@@ -216,8 +239,9 @@ function buildUserMessage(
   磷含量: ${food.phosphorusLevel} | 镁含量: ${food.magnesiumLevel}
   热量: ${food.calories} kcal/100g
   功效标签: ${food.functionalTags.map((t) => tagLabels[t] || t).join('、')}
-  价格: ¥${food.priceMin}-${food.priceMax}/${food.priceUnit === 'per_kg' ? 'kg' : '罐'}
+  价格: ¥${food.priceMin}-${food.priceMax}/${food.priceUnit === 'per_kg' ? 'kg' : '罐'}（来源：${priceSourceLabel}，更新于 ${priceUpdatedLabel}）
   备注: ${food.notes || '无'}`
+  }
 
   const ageMonths = calcAgeMonthsFromBirthday(catProfile.birthday)
   return `## 猫咪信息

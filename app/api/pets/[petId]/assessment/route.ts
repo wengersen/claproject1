@@ -148,16 +148,13 @@ ${logsDesc}
       dietaryAdvice: parsed.dietaryAdvice ?? '',
       careTips: Array.isArray(parsed.careTips) ? parsed.careTips : [],
     }
-  } catch {
-    // AI 调用失败时返回基础评估
-    assessmentData = {
-      basedOnLogs: logs.length,
-      overallStatus: 'good',
-      summary: '评估生成暂时失败，请稍后重试',
-      keyFindings: ['AI 分析服务暂时不可用'],
-      dietaryAdvice: '请稍后重新生成评估',
-      careTips: [],
-    }
+  } catch (err) {
+    // ✅ #16 — AI 调用失败时直接返回错误，不伪造健康状态
+    const isTimeout = err instanceof Error && err.name === 'AbortError'
+    const message = isTimeout
+      ? 'AI 评估超时，请稍后重试'
+      : 'AI 评估生成失败，请稍后重试'
+    return NextResponse.json({ error: message }, { status: 503 })
   }
 
   // 构建完整评估对象（含 id / 时间戳 / 48h 缓存过期时间）

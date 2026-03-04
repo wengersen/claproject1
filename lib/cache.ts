@@ -18,14 +18,28 @@ class RecommendCache {
   private readonly TTL = 5 * 60 * 1000 // 5 分钟
 
   /**
-   * 生成缓存键
-   * @param breed 猫咪品种
-   * @param healthTags 健康标签数组
-   * @returns 缓存键（MD5 哈希）
+   * 生成缓存键（完整输入指纹）
+   * 包含猫咪所有属性 + 健康标签 + 用户补充描述
    */
-  generateCacheKey(breed: string, healthTags: string[]): CacheKey {
-    const sortedTags = [...healthTags].sort().join('|')
-    const combined = `${breed}:${sortedTags}`
+  generateCacheKey(params: {
+    breed: string
+    ageMonths: number
+    weightKg: number
+    gender: string
+    neutered: boolean
+    healthTags: string[]
+    customInput?: string
+  }): CacheKey {
+    const sortedTags = [...params.healthTags].sort().join('|')
+    const combined = [
+      params.breed,
+      params.ageMonths,
+      params.weightKg,
+      params.gender,
+      params.neutered,
+      sortedTags,
+      params.customInput || '',
+    ].join(':')
     return crypto.createHash('md5').update(combined).digest('hex')
   }
 

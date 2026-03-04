@@ -12,6 +12,7 @@ import { AuthNav } from '@/components/auth/AuthNav'
 import { inferLifeStage, type HealthTag, type CatProfile } from '@/types/cat'
 import { generateResultId, calcAgeMonthsFromBirthday, formatAgeFromBirthday } from '@/lib/formatters'
 import { getPets } from '@/lib/petLocalStore'
+import { generateInputHash, getCachedResultId, saveCacheMapping } from '@/lib/recommendLocalCache'
 import type { Pet } from '@/types/pet'
 
 // ─── 类型 ────────────────────────────────────────────────
@@ -187,19 +188,43 @@ export default function RecommendPage() {
     // 提交前追加健康需求到 localStorage
     writeSession({ healthTags, customInput })
 
-    setStep(3)
     setError('')
 
-    const ageMonths = calcAgeMonthsFromBirthday(form.birthday)
+    const weightKg = parseFloat(form.weightKg)
+    if (isNaN(weightKg) || weightKg < 0.5 || weightKg > 20) {
+      setError('请输入有效的体重（0.5 ~ 20 kg）')
+      return
+    }
+
     const catProfile: CatProfile = {
       name: form.name.trim(),
       breed: form.breed,
       birthday: form.birthday,
-      ageStage: inferLifeStage(ageMonths),
-      weightKg: parseFloat(form.weightKg),
+      ageStage: inferLifeStage(calcAgeMonthsFromBirthday(form.birthday)),
+      weightKg,
       gender: form.gender as 'male' | 'female',
       neutered: form.neutered as boolean,
     }
+
+    // 客户端缓存检查：输入完全一致时直接跳转上次结果
+    const inputHash = generateInputHash({
+      breed: catProfile.breed,
+      birthday: catProfile.birthday,
+      weightKg: catProfile.weightKg,
+      gender: catProfile.gender,
+      neutered: catProfile.neutered,
+      healthTags,
+      customInput,
+    })
+
+    const cachedResultId = getCachedResultId(inputHash)
+    if (cachedResultId) {
+      router.push(`/result/${cachedResultId}`)
+      return
+    }
+
+    // 未命中缓存，调用 API
+    setStep(3)
 
     try {
       const res = await fetch('/api/recommend', {
@@ -212,6 +237,10 @@ export default function RecommendPage() {
       const result = await res.json()
       const resultId = generateResultId()
       localStorage.setItem(`result_${resultId}`, JSON.stringify(result))
+
+      // 保存输入指纹 → resultId 映射
+      saveCacheMapping(inputHash, resultId)
+
       router.push(`/result/${resultId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成失败，请重试')

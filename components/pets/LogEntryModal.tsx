@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { AppetiteLevel, EnergyLevel, DrinkingLevel, StoolCondition, VomitingFrequency } from '@/types/pet'
-import { saveLog, clearAssessment, generateId } from '@/lib/petLocalStore'
+import { saveLog, clearAssessment, generateId, getLogs } from '@/lib/petLocalStore'
 
 interface LogEntryModalProps {
   petName: string
@@ -69,10 +69,10 @@ export function LogEntryModal({ petName, petId, userId, onSuccess, onClose }: Lo
   const [stool, setStool] = useState<StoolCondition>('normal')
   const [vomiting, setVomiting] = useState<VomitingFrequency>('none')
   const [notes, setNotes] = useState('')
+  // 同日覆盖确认状态
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false)
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-
+  function doSaveLog() {
     const now = new Date().toISOString()
     saveLog({
       id: generateId(),
@@ -93,11 +93,56 @@ export function LogEntryModal({ petName, petId, userId, onSuccess, onClose }: Lo
     onSuccess()
   }
 
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+
+    // 检查是否已有同日记录
+    const existingLogs = getLogs(petId)
+    const hasSameDay = existingLogs.some((l) => l.date === date)
+    if (hasSameDay) {
+      // 弹出覆盖确认，不直接提交
+      setShowOverwriteConfirm(true)
+      return
+    }
+    doSaveLog()
+  }
+
   const modal = (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
+      {/* 同日覆盖确认弹窗（覆盖在主弹窗之上） */}
+      {showOverwriteConfirm && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 rounded-3xl">
+          <div className="bg-white rounded-2xl shadow-xl mx-4 p-6 max-w-[320px] w-full text-center space-y-4">
+            <div className="text-3xl">📝</div>
+            <div>
+              <p className="text-[16px] font-bold text-[#1A1815]">已有当日记录</p>
+              <p className="text-[13px] text-[#78746C] mt-1.5 leading-relaxed">
+                <span className="font-semibold text-[#E8721A]">{date}</span> 已有一条记录，<br />
+                确认后将用本次内容覆盖旧记录。
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowOverwriteConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-[#E8E6E1] text-[14px] font-medium text-[#78746C] hover:bg-[#F4F3F0] transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowOverwriteConfirm(false); doSaveLog() }}
+                className="flex-1 py-2.5 rounded-xl bg-[#E8721A] text-white text-[14px] font-semibold hover:bg-[#C45C0A] transition-colors"
+              >
+                确认覆盖
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[460px] relative animate-slide-up my-8">
         {/* 头部 */}
         <div className="flex items-center justify-between px-7 pt-7 pb-0">

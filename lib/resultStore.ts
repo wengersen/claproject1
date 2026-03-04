@@ -77,6 +77,28 @@ export function getUserById(userId: string): User | null {
 }
 
 /**
+ * 从 JWT payload 重建最小用户对象写入内存 Map
+ * 用于服务端重启后（Map 已清空），clientHash 路径登录的用户仍能正常保存推荐。
+ * 不写入 emailLookup（无 email 信息），不影响注册唯一性校验。
+ */
+export function createUserFromJwt(userId: string, username: string): void {
+  if (usersStore.has(userId)) return // 已存在则跳过
+  const now = new Date().toISOString()
+  const ghost: User = {
+    id: userId,
+    username,
+    email: '',         // 无 email，仅作内存占位
+    passwordHash: '',  // 无密码 hash，不影响保存逻辑
+    nickname: username,
+    createdAt: now,
+    updatedAt: now,
+  }
+  usersStore.set(userId, ghost)
+  usernameLookup.set(username, userId)
+  console.log(`[resultStore] Ghost user rebuilt from JWT: ${username}`)
+}
+
+/**
  * 验证用户登录
  */
 export async function authenticateUser(
@@ -98,17 +120,14 @@ export async function authenticateUser(
 
 /**
  * 保存推荐结果到用户档案
+ * 注意：不再校验 usersStore 内是否存在该用户。
+ * JWT 验证已在调用方（API route）完成，只要 token 有效即可保存。
+ * 这样可以兼容"clientHash 路径登录"（服务端 Map 重启后为空，但 JWT 依然有效）的场景。
  */
 export async function saveRecommendation(
   userId: string,
   result: RecommendResult
 ): Promise<boolean> {
-  const user = usersStore.get(userId)
-  if (!user) {
-    console.warn(`[resultStore] User not found: ${userId}`)
-    return false
-  }
-
   const recommendation: StoredRecommendation = {
     id: uuidv4(),
     userId,

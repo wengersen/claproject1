@@ -68,6 +68,8 @@ export interface CatFood {
   priceMin: number                   // 价格区间下限（元/kg 或 元/罐）
   priceMax: number                   // 价格区间上限
   priceUnit: 'per_kg' | 'per_can'   // 价格单位
+  priceSource?: string               // 价格数据来源，如 "淘宝旗舰店" | "京东自营"
+  priceUpdatedAt?: string            // 价格更新时间，如 "2025-03"
   weightOptions?: string[]           // 可购规格，如 ['1.5kg', '5kg']
   availableInChina: boolean          // 国内是否易购买（入库必须为 true）
   buyLinks: BuyLink[]                // 购买链接（预留）
@@ -117,7 +119,7 @@ export interface ProductRecommendation {
 
 /** 完整推荐结果 */
 export interface RecommendResult {
-  id: string                         // 结果唯一 ID（用于 URL 和分享）
+  id?: string                        // 客户端生成的 resultId（API 不再下发，由 localStorage key 承担）
   catProfile: CatProfile
   healthTags: HealthTag[]
   dryFood: ProductRecommendation[]   // 主粮推荐（3-5款）
