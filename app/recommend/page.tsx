@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, UIEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ProgressSteps } from '@/components/ui/ProgressSteps'
 import { Button } from '@/components/ui/Button'
-import { BreedSelector } from '@/components/recommend/BreedSelector'
 import { HealthTagGrid } from '@/components/recommend/HealthTagGrid'
 import { LoadingState } from '@/components/recommend/LoadingState'
 import { AuthNav } from '@/components/auth/AuthNav'
@@ -21,119 +20,126 @@ import { getPets } from '@/lib/petLocalStore'
 import { generateInputHash, getCachedResultId, saveCacheMapping } from '@/lib/recommendLocalCache'
 import type { Pet } from '@/types/pet'
 
-// ─── BirthdaySelector：年/月/日 三栏 select，禁止选未来日期 ──────────
-function BirthdaySelector({
-  value,
-  onChange,
+// ─── BottomSheet：iOS 风格底部弹出层 ─────────────────────────────────
+function BottomSheet({
+  isOpen,
+  onClose,
+  title,
+  onConfirm,
+  children,
 }: {
-  value: string
-  onChange: (v: string) => void
+  isOpen: boolean
+  onClose: () => void
+  title: string
+  onConfirm?: () => void
+  children: React.ReactNode
 }) {
-  const today = new Date()
-  const currentYear = today.getFullYear()
-  const currentMonth = today.getMonth() + 1 // 1-based
-  const currentDay = today.getDate()
-
-  // 解析已有值
-  const parts = value ? value.split('-') : ['', '', '']
-  const selYear = parts[0] ? parseInt(parts[0]) : 0
-  const selMonth = parts[1] ? parseInt(parts[1]) : 0
-  const selDay = parts[2] ? parseInt(parts[2]) : 0
-
-  // 可选年份：2006 ~ 今年
-  const years = Array.from({ length: currentYear - 2005 }, (_, i) => currentYear - i)
-
-  // 可选月份：若选了今年则只到当前月
-  const maxMonth = selYear === currentYear ? currentMonth : 12
-  const months = Array.from({ length: maxMonth }, (_, i) => i + 1)
-
-  // 可选天数：根据年月计算；若选了今年今月则只到今天
-  function getDaysInMonth(y: number, m: number) {
-    return new Date(y, m, 0).getDate()
-  }
-  const maxDay =
-    selYear === currentYear && selMonth === currentMonth
-      ? currentDay
-      : selYear && selMonth
-      ? getDaysInMonth(selYear, selMonth)
-      : 31
-  const days = Array.from({ length: maxDay }, (_, i) => i + 1)
-
-  function handleChange(field: 'year' | 'month' | 'day', val: string) {
-    const num = parseInt(val)
-    let y = selYear, m = selMonth, d = selDay
-
-    if (field === 'year') { y = num; if (y === currentYear && m > currentMonth) m = 0; }
-    if (field === 'month') { m = num; }
-    if (field === 'day') { d = num; }
-
-    // 检查 day 是否仍然合法（月份变化后可能超出）
-    if (y && m) {
-      const maxD = y === currentYear && m === currentMonth
-        ? currentDay
-        : getDaysInMonth(y, m)
-      if (d > maxD) d = 0
+  // 阻止背景滚动
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
     }
-
-    if (y && m && d) {
-      onChange(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
-    } else if (y || m || d) {
-      // 部分选择，不触发 onChange（保持 birthday 为空直到三项全选）
-      onChange('')
-    }
-  }
-
-  const selectClass = [
-    'flex-1 bg-white border-2 rounded-xl px-3 py-3 outline-none transition-all duration-200 appearance-none',
-    'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10',
-    value ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10 text-[#1A1815]' : 'text-[#1A1815]',
-  ].join(' ')
+    return () => { document.body.style.overflow = '' }
+  }, [isOpen])
 
   return (
-    <div className="flex gap-2">
-      {/* 年 */}
-      <select
-        value={selYear || ''}
-        onChange={(e) => handleChange('year', e.target.value)}
-        style={{ fontSize: '16px' }}
-        className={selectClass}
-        aria-label="出生年份"
+    <>
+      {/* 遮罩 */}
+      <div
+        className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+      />
+      {/* 面板 */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl z-50 transition-transform duration-300 flex flex-col ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
+        style={{ maxHeight: '80vh', paddingBottom: 'env(safe-area-inset-bottom, 1rem)' }}
       >
-        <option value="">年</option>
-        {years.map((y) => (
-          <option key={y} value={y}>{y}</option>
-        ))}
-      </select>
+        {/* 顶栏：取消 / 标题 / 确定 */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 shrink-0">
+          <button
+            onClick={onClose}
+            className="text-[15px] text-gray-500 px-2 py-1 active:opacity-70 transition-opacity"
+          >
+            取消
+          </button>
+          <h3 className="text-[16px] font-medium text-gray-900">{title}</h3>
+          <button
+            onClick={onConfirm ?? onClose}
+            className="text-[15px] text-[#E8721A] font-medium px-2 py-1 active:opacity-70 transition-opacity"
+          >
+            确定
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">{children}</div>
+      </div>
+    </>
+  )
+}
 
-      {/* 月 */}
-      <select
-        value={selMonth || ''}
-        onChange={(e) => handleChange('month', e.target.value)}
-        disabled={!selYear}
-        style={{ fontSize: '16px' }}
-        className={`${selectClass} ${!selYear ? 'opacity-50 cursor-not-allowed' : ''}`}
-        aria-label="出生月份"
-      >
-        <option value="">月</option>
-        {months.map((m) => (
-          <option key={m} value={m}>{m}</option>
-        ))}
-      </select>
+// ─── WheelPickerColumn：iOS 滚轮选择列 ───────────────────────────────
+function WheelPickerColumn({
+  options,
+  value,
+  onChange,
+  unit,
+}: {
+  options: { value: number; label: string }[]
+  value: number
+  onChange: (v: number) => void
+  unit?: string
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const itemHeight = 44
 
-      {/* 日 */}
-      <select
-        value={selDay || ''}
-        onChange={(e) => handleChange('day', e.target.value)}
-        disabled={!selYear || !selMonth}
-        style={{ fontSize: '16px' }}
-        className={`${selectClass} ${!selYear || !selMonth ? 'opacity-50 cursor-not-allowed' : ''}`}
-        aria-label="出生日期"
+  useEffect(() => {
+    if (containerRef.current) {
+      const idx = options.findIndex((o) => o.value === value)
+      if (idx !== -1) {
+        containerRef.current.scrollTop = idx * itemHeight
+      }
+    }
+  }, [value, options])
+
+  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
+    const top = e.currentTarget.scrollTop
+    const idx = Math.round(top / itemHeight)
+    if (options[idx] && options[idx].value !== value) {
+      onChange(options[idx].value)
+    }
+  }
+
+  return (
+    <div className="relative flex-1 h-[220px] overflow-hidden bg-white">
+      {/* 选中高亮条 */}
+      <div className="absolute top-1/2 left-0 right-0 h-[44px] -mt-[22px] bg-gray-50 pointer-events-none rounded-md mx-2" />
+      {/* 滚动容器 */}
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto snap-y snap-mandatory relative z-10"
+        onScroll={handleScroll}
+        style={{ scrollBehavior: 'smooth', msOverflowStyle: 'none', scrollbarWidth: 'none' }}
       >
-        <option value="">日</option>
-        {days.map((d) => (
-          <option key={d} value={d}>{d}</option>
+        <div style={{ height: 88 }} />
+        {options.map((opt) => (
+          <div
+            key={opt.value}
+            className={`h-[44px] flex items-center justify-center snap-center transition-colors duration-200 ${
+              opt.value === value
+                ? 'text-gray-900 font-semibold text-[17px]'
+                : 'text-gray-400 text-[15px]'
+            }`}
+          >
+            {opt.label}{unit}
+          </div>
         ))}
-      </select>
+        <div style={{ height: 88 }} />
+      </div>
+      {/* 顶部渐变遮罩 */}
+      <div className="absolute top-0 left-0 right-0 h-[88px] bg-gradient-to-b from-white to-transparent pointer-events-none z-20" />
+      {/* 底部渐变遮罩 */}
+      <div className="absolute bottom-0 left-0 right-0 h-[88px] bg-gradient-to-t from-white to-transparent pointer-events-none z-20" />
     </div>
   )
 }
@@ -472,6 +478,65 @@ export default function RecommendPage() {
     }
   }
 
+  // ─── Step 1：BottomSheet 弹出状态 ───────────────────
+  const [activePicker, setActivePicker] = useState<'none' | 'breed' | 'birthday' | 'weight'>('none')
+
+  // 生日：临时状态（滚轮确认前不写入 form）
+  const today = new Date()
+  const [tempDate, setTempDate] = useState({ year: today.getFullYear() - 2, month: 1, day: 1 })
+  useEffect(() => {
+    if (activePicker === 'birthday' && form.birthday) {
+      const p = form.birthday.split('-')
+      setTempDate({ year: parseInt(p[0]), month: parseInt(p[1]), day: parseInt(p[2]) })
+    } else if (activePicker === 'birthday') {
+      setTempDate({ year: today.getFullYear() - 2, month: 1, day: 1 })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePicker])
+
+  const handleConfirmBirthday = () => {
+    const { year, month, day } = tempDate
+    // 不允许超过今天
+    const selected = new Date(year, month - 1, day)
+    const clamped = selected > today ? today : selected
+    const y = clamped.getFullYear()
+    const m = clamped.getMonth() + 1
+    const d = clamped.getDate()
+    updateForm('birthday', `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`)
+    setActivePicker('none')
+  }
+
+  // 生日滚轮：限制未来日期
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth() + 1
+  const currentDay = today.getDate()
+  const yearOptions = Array.from({ length: 20 }, (_, i) => ({ value: currentYear - i, label: `${currentYear - i}` }))
+  const maxMonth = tempDate.year === currentYear ? currentMonth : 12
+  const monthOptions = Array.from({ length: maxMonth }, (_, i) => ({ value: i + 1, label: `${i + 1}` }))
+  const daysInMonth = new Date(tempDate.year, tempDate.month, 0).getDate()
+  const maxDay = tempDate.year === currentYear && tempDate.month === currentMonth ? currentDay : daysInMonth
+  const dayOptions = Array.from({ length: maxDay }, (_, i) => ({ value: i + 1, label: `${i + 1}` }))
+
+  // 体重：临时状态
+  const [tempWeight, setTempWeight] = useState(4.5)
+  useEffect(() => {
+    if (activePicker === 'weight') {
+      setTempWeight(form.weightKg ? parseFloat(form.weightKg) : 4.5)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePicker])
+  const handleConfirmWeight = () => {
+    updateForm('weightKg', tempWeight.toFixed(1))
+    setActivePicker('none')
+  }
+
+  // 品种搜索
+  const [breedSearch, setBreedSearch] = useState('')
+  const COMMON_BREEDS = ['英国短毛猫','布偶猫','橘猫（田园猫）','美国短毛猫','暹罗猫','加菲猫','金吉拉','狮子猫','缅因猫','苏格兰折耳猫','波斯猫','孟加拉猫','其他']
+  const filteredBreeds = breedSearch
+    ? COMMON_BREEDS.filter(b => b.includes(breedSearch))
+    : COMMON_BREEDS
+
   // ─── 猫咪信息摘要（Step 2 顶部只读卡）────────────────
   const catSummary = [
     form.breed,
@@ -591,182 +656,318 @@ export default function RecommendPage() {
           </div>
         )}
 
-        {/* ── Step 1：基本信息 ── */}
+        {/* ── Step 1：基本信息（Figma 卡片式布局）── */}
         {!initializing && step === 1 && (
-          <div className="animate-slide-up space-y-6">
+          <div className="animate-slide-up pb-28">
             {/* 返回链接 */}
             {(lastSession || savedPets.length > 0) && (
               <button
                 type="button"
                 onClick={() => setStep(0)}
-                className="flex items-center gap-1.5 text-[13px] text-[#A8A49C] hover:text-[#E8721A] transition-colors"
+                className="flex items-center gap-1.5 text-[13px] text-[#A8A49C] hover:text-[#E8721A] transition-colors mb-5"
               >
                 ← 返回已有猫咪档案
               </button>
             )}
 
-            <div>
-              <h1 className="text-[22px] md:text-[28px] font-bold text-[#1A1815]">告诉我们，你的猫叫什么？</h1>
-              <p className="text-[14px] text-[#78746C] mt-1.5">信息越准确，推荐越精准</p>
+            <div className="mb-6">
+              <h1 className="text-[22px] md:text-[24px] font-bold text-[#1A1815]">填写猫咪基本信息</h1>
+              <p className="text-[14px] text-[#78746C] mt-1">信息越准确，推荐越精准</p>
             </div>
 
-            {/* ── 猫咪名字：正常高度输入框 ── */}
-            <div>
-              <label className="block text-[13px] font-medium text-[#78746C] mb-2">猫咪名字</label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => updateForm('name', e.target.value)}
-                placeholder="例如：奶茶、橘墩、球球"
-                maxLength={20}
-                style={{ fontSize: '16px' }}
-                className={[
-                  'w-full bg-white border-2 rounded-xl px-4 py-3 font-medium',
-                  'placeholder:text-[#D1CEC7] placeholder:font-normal',
-                  'outline-none transition-all duration-200',
-                  form.name
-                    ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10 text-[#1A1815]'
-                    : 'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 text-[#1A1815]',
-                ].join(' ')}
-              />
-            </div>
-
-            {/* ── 品种 ── */}
-            <BreedSelector value={form.breed} onChange={(v) => updateForm('breed', v)} />
-
-            {/* ── 生日：年/月/日 三栏 select ── */}
-            <div>
-              <label className="block text-[13px] font-medium text-[#78746C] mb-2">生日</label>
-              <BirthdaySelector
-                value={form.birthday}
-                onChange={(v) => updateForm('birthday', v)}
-              />
-              {form.birthday && (
-                <p className="text-[12px] text-[#78746C] mt-2">
-                  📅 {formatAgeFromBirthday(form.birthday)}
-                </p>
-              )}
-            </div>
-
-            {/* ── 体重：数字输入 + 滑动条 ── */}
-            <div>
-              <label className="block text-[13px] font-medium text-[#78746C] mb-2">
-                体重
-                {form.weightKg && (
-                  <span className="ml-2 text-[#E8721A] font-semibold">{form.weightKg} kg</span>
-                )}
-              </label>
-              {/* 数字输入框 */}
-              <input
-                type="number"
-                value={form.weightKg}
-                onChange={(e) => updateForm('weightKg', e.target.value)}
-                placeholder="例如：4.5"
-                min={0.5} max={20} step={0.1}
-                style={{ fontSize: '16px' }}
-                className={[
-                  'w-full bg-white border-2 rounded-xl px-4 py-3 outline-none transition-all duration-200',
-                  form.weightKg
-                    ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10 text-[#1A1815]'
-                    : 'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 text-[#1A1815]',
-                ].join(' ')}
-              />
-              {/* 滑动条 */}
-              <div className="mt-3 px-1">
+            {/* ── 卡片一：名字 ── */}
+            <div className="bg-white rounded-2xl px-5 py-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] mb-3">
+              <div className="flex items-center justify-between py-4">
+                <span className="text-[15px] text-gray-700 font-medium min-w-[70px]">
+                  名字 <span className="text-[#E8721A]">*</span>
+                </span>
                 <input
-                  type="range"
-                  min={0.5} max={20} step={0.1}
-                  value={form.weightKg || 4}
-                  onChange={(e) => updateForm('weightKg', e.target.value)}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#E8721A]"
-                  style={{ background: form.weightKg
-                    ? `linear-gradient(to right, #E8721A ${((parseFloat(form.weightKg) - 0.5) / 19.5) * 100}%, #E8E6E1 ${((parseFloat(form.weightKg) - 0.5) / 19.5) * 100}%)`
-                    : '#E8E6E1'
-                  }}
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => updateForm('name', e.target.value)}
+                  placeholder="请填写猫咪名字"
+                  maxLength={20}
+                  style={{ fontSize: '16px' }}
+                  className="flex-1 text-right outline-none text-[15px] text-gray-900 placeholder:text-gray-300 bg-transparent"
                 />
-                <div className="flex justify-between text-[11px] text-[#A8A49C] mt-1">
-                  <span>0.5 kg</span>
-                  <span>10 kg</span>
-                  <span>20 kg</span>
+              </div>
+            </div>
+
+            {/* ── 卡片二：品种 + 生日 + 体重 ── */}
+            <div className="bg-white rounded-2xl px-5 py-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] mb-3">
+              {/* 品种 */}
+              <button
+                type="button"
+                onClick={() => setActivePicker('breed')}
+                className="w-full flex items-center justify-between py-4 border-b border-gray-100 active:bg-gray-50 transition-colors"
+              >
+                <span className="text-[15px] text-gray-700 font-medium min-w-[70px] text-left">
+                  品种 <span className="text-[#E8721A]">*</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[15px] ${form.breed ? 'text-gray-900' : 'text-gray-300'}`}>
+                    {form.breed || '请选择品种'}
+                  </span>
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* 出生日期 */}
+              <button
+                type="button"
+                onClick={() => setActivePicker('birthday')}
+                className="w-full flex items-center justify-between py-4 border-b border-gray-100 active:bg-gray-50 transition-colors"
+              >
+                <span className="text-[15px] text-gray-700 font-medium min-w-[70px] text-left">
+                  出生日期 <span className="text-[#E8721A]">*</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[15px] ${form.birthday ? 'text-gray-900' : 'text-gray-300'}`}>
+                    {form.birthday
+                      ? `${form.birthday.split('-')[0]}年${parseInt(form.birthday.split('-')[1])}月${parseInt(form.birthday.split('-')[2])}日`
+                      : '请选择出生日期'}
+                  </span>
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+              {form.birthday && (
+                <p className="text-[12px] text-[#78746C] pb-2 pl-0">📅 {formatAgeFromBirthday(form.birthday)}</p>
+              )}
+
+              {/* 体重 */}
+              <button
+                type="button"
+                onClick={() => setActivePicker('weight')}
+                className="w-full flex items-center justify-between py-4 active:bg-gray-50 transition-colors"
+              >
+                <span className="text-[15px] text-gray-700 font-medium min-w-[70px] text-left">
+                  体重 <span className="text-[#E8721A]">*</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[15px] ${form.weightKg ? 'text-gray-900' : 'text-gray-300'}`}>
+                    {form.weightKg ? `${parseFloat(form.weightKg).toFixed(1)} kg` : '请选择体重'}
+                  </span>
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+            </div>
+
+            {/* ── 卡片三：性别 + 绝育状态 ── */}
+            <div className="bg-white rounded-2xl px-5 py-1 shadow-[0_2px_10px_rgba(0,0,0,0.04)] mb-3">
+              {/* 性别 */}
+              <div className="flex items-center justify-between py-4 border-b border-gray-100">
+                <span className="text-[15px] text-gray-700 font-medium min-w-[70px]">
+                  性别 <span className="text-[#E8721A]">*</span>
+                </span>
+                <div className="flex items-center gap-6">
+                  {([{ value: 'male', label: '公猫' }, { value: 'female', label: '母猫' }] as const).map(({ value, label }) => (
+                    <label key={value} className="flex items-center gap-2 cursor-pointer">
+                      <button
+                        type="button"
+                        onClick={() => updateForm('gender', value)}
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 shrink-0 ${
+                          form.gender === value
+                            ? 'border-[#E8721A] bg-[#E8721A]'
+                            : 'border-gray-300 bg-white'
+                        }`}
+                        aria-label={label}
+                      >
+                        {form.gender === value && (
+                          <div className="w-2 h-2 rounded-full bg-white" />
+                        )}
+                      </button>
+                      <span className="text-[15px] text-gray-800">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* 绝育状态 */}
+              <div className="flex items-center justify-between py-4">
+                <div className="min-w-[70px]">
+                  <div className="text-[15px] text-gray-700 font-medium">
+                    绝育状态 <span className="text-[#E8721A]">*</span>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">影响热量需求</div>
+                </div>
+                <div className="flex items-center gap-6">
+                  {([{ value: true, label: '已绝育' }, { value: false, label: '未绝育' }] as const).map(({ value, label }) => (
+                    <label key={String(value)} className="flex items-center gap-2 cursor-pointer">
+                      <button
+                        type="button"
+                        onClick={() => updateForm('neutered', value)}
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 shrink-0 ${
+                          form.neutered === value
+                            ? 'border-[#E8721A] bg-[#E8721A]'
+                            : 'border-gray-300 bg-white'
+                        }`}
+                        aria-label={label}
+                      >
+                        {form.neutered === value && (
+                          <div className="w-2 h-2 rounded-full bg-white" />
+                        )}
+                      </button>
+                      <span className="text-[15px] text-gray-800">{label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             </div>
 
-            {/* ── 性别：图标文字垂直居中对齐 ── */}
-            <div>
-              <label className="block text-[13px] font-medium text-[#78746C] mb-2">性别</label>
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  { value: 'male', label: '公猫', icon: '♂' },
-                  { value: 'female', label: '母猫', icon: '♀' },
-                ] as const).map(({ value, label, icon }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => updateForm('gender', value)}
-                    className={[
-                      'relative flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl border-2 transition-all duration-150',
-                      form.gender === value
-                        ? 'border-[#E8721A] bg-[#FFF8F3]'
-                        : 'border-[#E8E6E1] bg-white hover:border-[#FFB87A] hover:bg-[#FFF8F3]',
-                    ].join(' ')}
-                  >
-                    {form.gender === value && (
-                      <span className="absolute top-1.5 right-2 text-[#E8721A] text-[11px] font-bold leading-none">✓</span>
-                    )}
-                    <span
-                      className={`text-[20px] leading-none ${form.gender === value ? 'text-[#E8721A]' : 'text-[#A8A49C]'}`}
-                      style={{ lineHeight: 1 }}
-                    >
-                      {icon}
-                    </span>
-                    <span className={`font-medium text-[15px] leading-none ${form.gender === value ? 'text-[#E8721A]' : 'text-[#2E2B27]'}`}>
-                      {label}
-                    </span>
-                  </button>
-                ))}
+            {/* ── 底部固定按钮 ── */}
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t border-gray-100 z-30">
+              <div className="max-w-[640px] mx-auto">
+                <button
+                  type="button"
+                  onClick={step1Valid ? goToStep2 : undefined}
+                  className={`w-full font-medium text-[16px] py-3.5 rounded-full transition-all flex items-center justify-center gap-1 ${
+                    step1Valid
+                      ? 'bg-[#E8721A] text-white shadow-[0_4px_14px_rgba(232,114,26,0.35)] active:scale-[0.98]'
+                      : 'bg-[#E8721A]/40 text-white cursor-not-allowed'
+                  }`}
+                >
+                  下一步：选择健康需求
+                  <svg className="w-4 h-4 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
               </div>
             </div>
-
-            {/* ── 绝育状态 ── */}
-            <div>
-              <label className="block text-[13px] font-medium text-[#78746C] mb-2">
-                绝育状态
-                <span className="text-[11px] text-[#A8A49C] ml-1.5">影响热量需求</span>
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  { value: true, label: '已绝育', desc: '热量需求较低' },
-                  { value: false, label: '未绝育', desc: '热量需求正常' },
-                ] as const).map(({ value, label, desc }) => (
-                  <button
-                    key={String(value)}
-                    type="button"
-                    onClick={() => updateForm('neutered', value)}
-                    className={[
-                      'relative p-4 rounded-xl border-2 transition-all duration-150 text-left',
-                      form.neutered === value
-                        ? 'border-[#E8721A] bg-[#FFF8F3]'
-                        : 'border-[#E8E6E1] bg-white hover:border-[#FFB87A] hover:bg-[#FFF8F3]',
-                    ].join(' ')}
-                  >
-                    {form.neutered === value && (
-                      <span className="absolute top-1.5 right-2 text-[#E8721A] text-[11px] font-bold">✓</span>
-                    )}
-                    <div className={`font-medium text-[15px] ${form.neutered === value ? 'text-[#E8721A]' : 'text-[#2E2B27]'}`}>
-                      {label}
-                    </div>
-                    <div className="text-[11px] text-[#A8A49C] mt-0.5">{desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Button variant="primary" size="lg" fullWidth disabled={!step1Valid} onClick={goToStep2}>
-              下一步：选择健康需求 →
-            </Button>
           </div>
         )}
+
+        {/* ── Step 1 BottomSheets ── */}
+
+        {/* 品种选择 BottomSheet */}
+        <BottomSheet
+          isOpen={activePicker === 'breed'}
+          onClose={() => { setActivePicker('none'); setBreedSearch('') }}
+          title="选择品种"
+        >
+          <div className="p-4 pt-3 pb-8">
+            {/* 搜索框 */}
+            <div className="relative mb-4">
+              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={breedSearch}
+                onChange={(e) => setBreedSearch(e.target.value)}
+                placeholder="搜索品种，例如：英短、橘猫..."
+                style={{ fontSize: '16px' }}
+                className="w-full bg-gray-100 rounded-full py-2.5 pl-10 pr-4 outline-none text-gray-900 placeholder:text-gray-400 focus:bg-gray-200 transition-colors"
+              />
+            </div>
+            {/* 品种标签 */}
+            <div className="flex flex-wrap gap-2.5">
+              {filteredBreeds.map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => {
+                    updateForm('breed', b)
+                    setActivePicker('none')
+                    setBreedSearch('')
+                  }}
+                  className={`px-4 py-2.5 rounded-full text-[14px] transition-all duration-200 border ${
+                    form.breed === b
+                      ? 'bg-orange-50 border-[#E8721A] text-[#E8721A] font-medium shadow-sm'
+                      : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50'
+                  }`}
+                >
+                  {b}
+                </button>
+              ))}
+              {filteredBreeds.length === 0 && (
+                <p className="text-[14px] text-gray-400 py-4 w-full text-center">未找到匹配品种</p>
+              )}
+            </div>
+          </div>
+        </BottomSheet>
+
+        {/* 生日 WheelPicker BottomSheet */}
+        <BottomSheet
+          isOpen={activePicker === 'birthday'}
+          onClose={() => setActivePicker('none')}
+          onConfirm={handleConfirmBirthday}
+          title="选择出生日期"
+        >
+          <div className="flex px-4 py-2 pb-6">
+            <WheelPickerColumn
+              options={yearOptions}
+              value={tempDate.year}
+              onChange={(v) => setTempDate((d) => ({ ...d, year: v, month: Math.min(d.month, v === currentYear ? currentMonth : 12) }))}
+              unit="年"
+            />
+            <WheelPickerColumn
+              options={monthOptions}
+              value={tempDate.month}
+              onChange={(v) => setTempDate((d) => ({ ...d, month: v }))}
+              unit="月"
+            />
+            <WheelPickerColumn
+              options={dayOptions}
+              value={tempDate.day}
+              onChange={(v) => setTempDate((d) => ({ ...d, day: v }))}
+              unit="日"
+            />
+          </div>
+        </BottomSheet>
+
+        {/* 体重 BottomSheet */}
+        <BottomSheet
+          isOpen={activePicker === 'weight'}
+          onClose={() => setActivePicker('none')}
+          onConfirm={handleConfirmWeight}
+          title="选择体重"
+        >
+          <div className="py-8 px-6 pb-10 flex flex-col items-center">
+            {/* 大数字输入 */}
+            <div className="flex items-baseline mb-10">
+              <input
+                type="number"
+                value={tempWeight}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value)
+                  if (!isNaN(v)) setTempWeight(Math.min(30, Math.max(0.5, v)))
+                }}
+                step="0.1"
+                min="0.5"
+                max="30"
+                style={{ fontSize: '44px', fontWeight: 700 }}
+                className="w-32 text-center bg-transparent outline-none border-b-2 border-orange-200 focus:border-[#E8721A] transition-colors pb-1 text-gray-900"
+              />
+              <span className="text-[18px] text-gray-500 ml-2 font-medium">kg</span>
+            </div>
+            {/* Range Slider */}
+            <div className="w-full px-2">
+              <input
+                type="range"
+                min="0.5"
+                max="30"
+                step="0.1"
+                value={tempWeight}
+                onChange={(e) => setTempWeight(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-[#E8721A]"
+                style={{
+                  background: `linear-gradient(to right, #E8721A ${((tempWeight - 0.5) / 29.5) * 100}%, #e5e7eb ${((tempWeight - 0.5) / 29.5) * 100}%)`
+                }}
+              />
+              <div className="flex justify-between text-[12px] text-gray-400 mt-3 font-medium">
+                <span>0.5 kg</span>
+                <span>15 kg</span>
+                <span>30 kg</span>
+              </div>
+            </div>
+          </div>
+        </BottomSheet>
 
         {/* ── Step 2：健康需求 ── */}
         {!initializing && step === 2 && (
