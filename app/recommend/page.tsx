@@ -21,6 +21,123 @@ import { getPets } from '@/lib/petLocalStore'
 import { generateInputHash, getCachedResultId, saveCacheMapping } from '@/lib/recommendLocalCache'
 import type { Pet } from '@/types/pet'
 
+// ─── BirthdaySelector：年/月/日 三栏 select，禁止选未来日期 ──────────
+function BirthdaySelector({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  const today = new Date()
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth() + 1 // 1-based
+  const currentDay = today.getDate()
+
+  // 解析已有值
+  const parts = value ? value.split('-') : ['', '', '']
+  const selYear = parts[0] ? parseInt(parts[0]) : 0
+  const selMonth = parts[1] ? parseInt(parts[1]) : 0
+  const selDay = parts[2] ? parseInt(parts[2]) : 0
+
+  // 可选年份：2006 ~ 今年
+  const years = Array.from({ length: currentYear - 2005 }, (_, i) => currentYear - i)
+
+  // 可选月份：若选了今年则只到当前月
+  const maxMonth = selYear === currentYear ? currentMonth : 12
+  const months = Array.from({ length: maxMonth }, (_, i) => i + 1)
+
+  // 可选天数：根据年月计算；若选了今年今月则只到今天
+  function getDaysInMonth(y: number, m: number) {
+    return new Date(y, m, 0).getDate()
+  }
+  const maxDay =
+    selYear === currentYear && selMonth === currentMonth
+      ? currentDay
+      : selYear && selMonth
+      ? getDaysInMonth(selYear, selMonth)
+      : 31
+  const days = Array.from({ length: maxDay }, (_, i) => i + 1)
+
+  function handleChange(field: 'year' | 'month' | 'day', val: string) {
+    const num = parseInt(val)
+    let y = selYear, m = selMonth, d = selDay
+
+    if (field === 'year') { y = num; if (y === currentYear && m > currentMonth) m = 0; }
+    if (field === 'month') { m = num; }
+    if (field === 'day') { d = num; }
+
+    // 检查 day 是否仍然合法（月份变化后可能超出）
+    if (y && m) {
+      const maxD = y === currentYear && m === currentMonth
+        ? currentDay
+        : getDaysInMonth(y, m)
+      if (d > maxD) d = 0
+    }
+
+    if (y && m && d) {
+      onChange(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
+    } else if (y || m || d) {
+      // 部分选择，不触发 onChange（保持 birthday 为空直到三项全选）
+      onChange('')
+    }
+  }
+
+  const selectClass = [
+    'flex-1 bg-white border-2 rounded-xl px-3 py-3 outline-none transition-all duration-200 appearance-none',
+    'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10',
+    value ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10 text-[#1A1815]' : 'text-[#1A1815]',
+  ].join(' ')
+
+  return (
+    <div className="flex gap-2">
+      {/* 年 */}
+      <select
+        value={selYear || ''}
+        onChange={(e) => handleChange('year', e.target.value)}
+        style={{ fontSize: '16px' }}
+        className={selectClass}
+        aria-label="出生年份"
+      >
+        <option value="">年</option>
+        {years.map((y) => (
+          <option key={y} value={y}>{y}</option>
+        ))}
+      </select>
+
+      {/* 月 */}
+      <select
+        value={selMonth || ''}
+        onChange={(e) => handleChange('month', e.target.value)}
+        disabled={!selYear}
+        style={{ fontSize: '16px' }}
+        className={`${selectClass} ${!selYear ? 'opacity-50 cursor-not-allowed' : ''}`}
+        aria-label="出生月份"
+      >
+        <option value="">月</option>
+        {months.map((m) => (
+          <option key={m} value={m}>{m}</option>
+        ))}
+      </select>
+
+      {/* 日 */}
+      <select
+        value={selDay || ''}
+        onChange={(e) => handleChange('day', e.target.value)}
+        disabled={!selYear || !selMonth}
+        style={{ fontSize: '16px' }}
+        className={`${selectClass} ${!selYear || !selMonth ? 'opacity-50 cursor-not-allowed' : ''}`}
+        aria-label="出生日期"
+      >
+        <option value="">日</option>
+        {days.map((d) => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 // ─── 类型 ────────────────────────────────────────────────
 interface FormState {
   name: string
@@ -476,13 +593,13 @@ export default function RecommendPage() {
 
         {/* ── Step 1：基本信息 ── */}
         {!initializing && step === 1 && (
-          <div className="animate-slide-up space-y-8">
-            {/* 有历史档案或宠物档案时显示返回链接 */}
+          <div className="animate-slide-up space-y-6">
+            {/* 返回链接 */}
             {(lastSession || savedPets.length > 0) && (
               <button
                 type="button"
                 onClick={() => setStep(0)}
-                className="flex items-center gap-1.5 text-[13px] text-[#A8A49C] hover:text-[#E8721A] transition-colors -mb-2"
+                className="flex items-center gap-1.5 text-[13px] text-[#A8A49C] hover:text-[#E8721A] transition-colors"
               >
                 ← 返回已有猫咪档案
               </button>
@@ -490,100 +607,155 @@ export default function RecommendPage() {
 
             <div>
               <h1 className="text-[22px] md:text-[28px] font-bold text-[#1A1815]">告诉我们，你的猫叫什么？</h1>
-              <p className="text-[14px] text-[#78746C] mt-2">信息越准确，推荐越精准</p>
+              <p className="text-[14px] text-[#78746C] mt-1.5">信息越准确，推荐越精准</p>
             </div>
 
-            {/* 猫咪名字 */}
+            {/* ── 猫咪名字：正常高度输入框 ── */}
             <div>
+              <label className="block text-[13px] font-medium text-[#78746C] mb-2">猫咪名字</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => updateForm('name', e.target.value)}
                 placeholder="例如：奶茶、橘墩、球球"
                 maxLength={20}
+                style={{ fontSize: '16px' }}
                 className={[
-                  'w-full text-center text-[22px] md:text-[28px] font-bold bg-white border-2 rounded-xl px-6 py-4',
-                  'placeholder:text-[#D1CEC7] placeholder:font-normal placeholder:text-[22px]',
+                  'w-full bg-white border-2 rounded-xl px-4 py-3 font-medium',
+                  'placeholder:text-[#D1CEC7] placeholder:font-normal',
                   'outline-none transition-all duration-200',
                   form.name
-                    ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10'
-                    : 'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10',
+                    ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10 text-[#1A1815]'
+                    : 'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 text-[#1A1815]',
                 ].join(' ')}
               />
             </div>
 
-            {/* 品种 */}
+            {/* ── 品种 ── */}
             <BreedSelector value={form.breed} onChange={(v) => updateForm('breed', v)} />
 
-            {/* 生日 + 体重 */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[13px] font-medium text-[#78746C] mb-2">生日</label>
-                <input
-                  type="date"
-                  value={form.birthday}
-                  onChange={(e) => updateForm('birthday', e.target.value)}
-                  max={new Date().toISOString().slice(0, 10)}
-                  min="2006-01-01"
-                  className={[
-                    'w-full bg-white border-2 rounded-xl px-4 py-3 text-[15px] outline-none transition-all duration-200',
-                    form.birthday
-                      ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10 text-[#2E2B27]'
-                      : 'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 text-[#A8A49C]',
-                  ].join(' ')}
-                />
-                {form.birthday && (
-                  <p className="text-[12px] text-[#78746C] mt-1.5">
-                    当前：{formatAgeFromBirthday(form.birthday)}
-                  </p>
+            {/* ── 生日：年/月/日 三栏 select ── */}
+            <div>
+              <label className="block text-[13px] font-medium text-[#78746C] mb-2">生日</label>
+              <BirthdaySelector
+                value={form.birthday}
+                onChange={(v) => updateForm('birthday', v)}
+              />
+              {form.birthday && (
+                <p className="text-[12px] text-[#78746C] mt-2">
+                  📅 {formatAgeFromBirthday(form.birthday)}
+                </p>
+              )}
+            </div>
+
+            {/* ── 体重：数字输入 + 滑动条 ── */}
+            <div>
+              <label className="block text-[13px] font-medium text-[#78746C] mb-2">
+                体重
+                {form.weightKg && (
+                  <span className="ml-2 text-[#E8721A] font-semibold">{form.weightKg} kg</span>
                 )}
-              </div>
-              <div>
-                <label className="block text-[13px] font-medium text-[#78746C] mb-2">体重（kg）</label>
+              </label>
+              {/* 数字输入框 */}
+              <input
+                type="number"
+                value={form.weightKg}
+                onChange={(e) => updateForm('weightKg', e.target.value)}
+                placeholder="例如：4.5"
+                min={0.5} max={20} step={0.1}
+                style={{ fontSize: '16px' }}
+                className={[
+                  'w-full bg-white border-2 rounded-xl px-4 py-3 outline-none transition-all duration-200',
+                  form.weightKg
+                    ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10 text-[#1A1815]'
+                    : 'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10 text-[#1A1815]',
+                ].join(' ')}
+              />
+              {/* 滑动条 */}
+              <div className="mt-3 px-1">
                 <input
-                  type="number"
-                  value={form.weightKg}
+                  type="range"
+                  min={0.5} max={20} step={0.1}
+                  value={form.weightKg || 4}
                   onChange={(e) => updateForm('weightKg', e.target.value)}
-                  placeholder="例如：4.5"
-                  min={0.1} max={20} step={0.1}
-                  className={[
-                    'w-full bg-white border-2 rounded-xl px-4 py-3 text-[15px] outline-none transition-all duration-200',
-                    form.weightKg
-                      ? 'border-[#E8721A] ring-4 ring-[#E8721A]/10'
-                      : 'border-[#E8E6E1] focus:border-[#E8721A] focus:ring-4 focus:ring-[#E8721A]/10',
-                  ].join(' ')}
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#E8721A]"
+                  style={{ background: form.weightKg
+                    ? `linear-gradient(to right, #E8721A ${((parseFloat(form.weightKg) - 0.5) / 19.5) * 100}%, #E8E6E1 ${((parseFloat(form.weightKg) - 0.5) / 19.5) * 100}%)`
+                    : '#E8E6E1'
+                  }}
                 />
+                <div className="flex justify-between text-[11px] text-[#A8A49C] mt-1">
+                  <span>0.5 kg</span>
+                  <span>10 kg</span>
+                  <span>20 kg</span>
+                </div>
               </div>
             </div>
 
-            {/* 性别 */}
+            {/* ── 性别：图标文字垂直居中对齐 ── */}
             <div>
               <label className="block text-[13px] font-medium text-[#78746C] mb-2">性别</label>
               <div className="grid grid-cols-2 gap-3">
-                {[{ value: 'male', label: '公猫', icon: '♂' }, { value: 'female', label: '母猫', icon: '♀' }].map(({ value, label, icon }) => (
-                  <button key={value} type="button" onClick={() => updateForm('gender', value as 'male' | 'female')}
-                    className={['relative flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-150',
-                      form.gender === value ? 'border-[#E8721A] bg-[#FFF8F3]' : 'border-[#E8E6E1] bg-white hover:border-[#FFB87A] hover:bg-[#FFF8F3]'].join(' ')}>
-                    {form.gender === value && <span className="absolute top-1 right-2 text-[#E8721A] text-[11px] font-bold">✓</span>}
-                    <span className={`text-2xl ${form.gender === value ? 'text-[#E8721A]' : 'text-[#A8A49C]'}`}>{icon}</span>
-                    <span className={`font-medium text-[15px] ${form.gender === value ? 'text-[#E8721A]' : 'text-[#2E2B27]'}`}>{label}</span>
+                {([
+                  { value: 'male', label: '公猫', icon: '♂' },
+                  { value: 'female', label: '母猫', icon: '♀' },
+                ] as const).map(({ value, label, icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => updateForm('gender', value)}
+                    className={[
+                      'relative flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl border-2 transition-all duration-150',
+                      form.gender === value
+                        ? 'border-[#E8721A] bg-[#FFF8F3]'
+                        : 'border-[#E8E6E1] bg-white hover:border-[#FFB87A] hover:bg-[#FFF8F3]',
+                    ].join(' ')}
+                  >
+                    {form.gender === value && (
+                      <span className="absolute top-1.5 right-2 text-[#E8721A] text-[11px] font-bold leading-none">✓</span>
+                    )}
+                    <span
+                      className={`text-[20px] leading-none ${form.gender === value ? 'text-[#E8721A]' : 'text-[#A8A49C]'}`}
+                      style={{ lineHeight: 1 }}
+                    >
+                      {icon}
+                    </span>
+                    <span className={`font-medium text-[15px] leading-none ${form.gender === value ? 'text-[#E8721A]' : 'text-[#2E2B27]'}`}>
+                      {label}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 绝育状态 */}
+            {/* ── 绝育状态 ── */}
             <div>
               <label className="block text-[13px] font-medium text-[#78746C] mb-2">
-                绝育状态<span className="text-[11px] text-[#A8A49C] ml-2">（影响热量需求）</span>
+                绝育状态
+                <span className="text-[11px] text-[#A8A49C] ml-1.5">影响热量需求</span>
               </label>
               <div className="grid grid-cols-2 gap-3">
-                {[{ value: true, label: '已绝育', desc: '热量需求较低' }, { value: false, label: '未绝育', desc: '热量需求正常' }].map(({ value, label, desc }) => (
-                  <button key={String(value)} type="button" onClick={() => updateForm('neutered', value)}
-                    className={['relative p-4 rounded-xl border-2 transition-all duration-150 text-left',
-                      form.neutered === value ? 'border-[#E8721A] bg-[#FFF8F3]' : 'border-[#E8E6E1] bg-white hover:border-[#FFB87A] hover:bg-[#FFF8F3]'].join(' ')}>
-                    {form.neutered === value && <span className="absolute top-1 right-2 text-[#E8721A] text-[11px] font-bold">✓</span>}
-                    <div className={`font-medium text-[15px] ${form.neutered === value ? 'text-[#E8721A]' : 'text-[#2E2B27]'}`}>{label}</div>
+                {([
+                  { value: true, label: '已绝育', desc: '热量需求较低' },
+                  { value: false, label: '未绝育', desc: '热量需求正常' },
+                ] as const).map(({ value, label, desc }) => (
+                  <button
+                    key={String(value)}
+                    type="button"
+                    onClick={() => updateForm('neutered', value)}
+                    className={[
+                      'relative p-4 rounded-xl border-2 transition-all duration-150 text-left',
+                      form.neutered === value
+                        ? 'border-[#E8721A] bg-[#FFF8F3]'
+                        : 'border-[#E8E6E1] bg-white hover:border-[#FFB87A] hover:bg-[#FFF8F3]',
+                    ].join(' ')}
+                  >
+                    {form.neutered === value && (
+                      <span className="absolute top-1.5 right-2 text-[#E8721A] text-[11px] font-bold">✓</span>
+                    )}
+                    <div className={`font-medium text-[15px] ${form.neutered === value ? 'text-[#E8721A]' : 'text-[#2E2B27]'}`}>
+                      {label}
+                    </div>
                     <div className="text-[11px] text-[#A8A49C] mt-0.5">{desc}</div>
                   </button>
                 ))}
