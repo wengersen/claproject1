@@ -9,6 +9,7 @@ import { CompareModal } from '@/components/result/CompareModal'
 import { SignupModal } from '@/components/auth/SignupModal'
 import { LoginModal } from '@/components/auth/LoginModal'
 import { HEALTH_TAG_CONFIG, type RecommendResult, type ProductRecommendation } from '@/types/cat'
+import type { ConflictItem } from '@/lib/conflictDetector'
 import { formatAgeFromBirthday } from '@/lib/formatters'
 import type { AuthResponse } from '@/types/auth'
 import type { Pet } from '@/types/pet'
@@ -284,7 +285,7 @@ export default function ResultPage() {
     )
   }
 
-  const { catProfile, healthTags, dryFood, wetFood, disclaimer } = result
+  const { catProfile, healthTags, dryFood, wetFood, disclaimer, conflicts, originalHealthTags } = result
 
   return (
     <div className="min-h-screen bg-[#FFF8F3]">
@@ -434,6 +435,60 @@ export default function ResultPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
             <span className="text-amber-500 shrink-0">⚠️</span>
             <p className="text-[13px] text-amber-700">加入档案失败，请稍后重试</p>
+          </div>
+        )}
+
+        {/* 需求冲突纠偏提示卡（有冲突时显示，紧跟猫咪信息卡之后） */}
+        {conflicts && conflicts.length > 0 && (
+          <div className="space-y-3">
+            {(conflicts as ConflictItem[]).map((conflict, idx) => (
+              <div key={idx} className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+                <div className="flex gap-3">
+                  <span className="text-blue-500 text-xl shrink-0 mt-0.5">🔍</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-semibold text-blue-800 mb-1">营养方案已为您调整</p>
+                    <p className="text-[13px] text-blue-700 leading-relaxed">{conflict.message}</p>
+
+                    {/* 标签变更对比 */}
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] text-blue-500 font-medium uppercase tracking-wide">您的选择</span>
+                      <span className="text-[12px] text-blue-600 bg-blue-100 px-2.5 py-1 rounded-full line-through decoration-blue-400">
+                        {HEALTH_TAG_CONFIG[conflict.originalTag]?.emoji} {HEALTH_TAG_CONFIG[conflict.originalTag]?.label}
+                      </span>
+                      {conflict.correctedTag ? (
+                        <>
+                          <span className="text-blue-400 text-[12px] font-medium">→</span>
+                          <span className="text-[11px] text-blue-500 font-medium uppercase tracking-wide">实际推荐</span>
+                          <span className="text-[12px] text-blue-900 bg-blue-200 font-semibold px-2.5 py-1 rounded-full">
+                            {HEALTH_TAG_CONFIG[conflict.correctedTag]?.emoji} {HEALTH_TAG_CONFIG[conflict.correctedTag]?.label}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-blue-400 text-[12px] font-medium">→</span>
+                          <span className="text-[12px] text-blue-500 italic">已移除（不适用）</span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 若有多个原始标签且被纠偏，展示调整前后的完整需求 */}
+                    {originalHealthTags && originalHealthTags.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-blue-200 flex flex-wrap gap-2">
+                        <span className="text-[11px] text-blue-400 self-center">实际方向：</span>
+                        {healthTags.map((tag) => {
+                          const config = HEALTH_TAG_CONFIG[tag]
+                          return (
+                            <span key={tag} className="bg-blue-100 text-blue-700 rounded-full px-2.5 py-0.5 text-[12px]">
+                              {config.emoji} {config.label}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

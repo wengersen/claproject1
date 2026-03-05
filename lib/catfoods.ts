@@ -62,8 +62,8 @@ export function filterCandidates(
   const sorted = scored.map((s) => s.food)
 
   return {
-    dryFoods: sorted.filter((f) => f.type === 'dry').slice(0, 8),
-    wetFoods: sorted.filter((f) => f.type === 'wet').slice(0, 6),
+    dryFoods: sorted.filter((f) => f.type === 'dry').slice(0, 6),
+    wetFoods: sorted.filter((f) => f.type === 'wet').slice(0, 3),
   }
 }
 

@@ -73,6 +73,7 @@ export interface CatFood {
   weightOptions?: string[]           // 可购规格，如 ['1.5kg', '5kg']
   availableInChina: boolean          // 国内是否易购买（入库必须为 true）
   buyLinks: BuyLink[]                // 购买链接（预留）
+  reason: string                     // 产品核心特点描述（静态文案，不依赖LLM）
   notes?: string                     // 备注（特殊说明/注意事项）
   imageUrl?: string                  // 产品图片（预留）
 }
@@ -121,11 +122,13 @@ export interface ProductRecommendation {
 export interface RecommendResult {
   id?: string                        // 客户端生成的 resultId（API 不再下发，由 localStorage key 承担）
   catProfile: CatProfile
-  healthTags: HealthTag[]
+  healthTags: HealthTag[]            // 实际用于推荐的标签（已纠偏）
+  originalHealthTags?: HealthTag[]   // 用户原始选择的标签（有冲突时才存在）
   dryFood: ProductRecommendation[]   // 主粮推荐（3-5款）
   wetFood: ProductRecommendation[]   // 罐头推荐（2-3款）
   generatedAt: string                // ISO 时间戳
   disclaimer: string                 // 免责声明
+  conflicts?: import('@/lib/conflictDetector').ConflictItem[]  // 需求冲突纠偏信息
 }
 
 // ============================================================

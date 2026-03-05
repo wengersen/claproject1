@@ -47,11 +47,16 @@ export async function POST(req: NextRequest) {
     }
 
     // 验证结果数据
-    if (!result || !result.id) {
+    if (!result || !result.catProfile) {
       return NextResponse.json(
         { error: '推荐结果格式不正确' },
         { status: 400 }
       )
+    }
+
+    // 确保 result 有 id（前端已注入，此处兜底自生）
+    if (!result.id) {
+      result.id = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     }
 
     // 保存推荐

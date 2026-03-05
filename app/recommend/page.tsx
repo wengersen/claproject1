@@ -11,6 +11,12 @@ import { LoadingState } from '@/components/recommend/LoadingState'
 import { AuthNav } from '@/components/auth/AuthNav'
 import { inferLifeStage, type HealthTag, type CatProfile } from '@/types/cat'
 import { generateResultId, calcAgeMonthsFromBirthday, formatAgeFromBirthday } from '@/lib/formatters'
+import { hydrateSlimResult, getProductById } from '@/lib/productMap'
+import type { SlimRecommendResult, SlimProductRecommendation } from '@/lib/productMap'
+import type { ProductRecommendation } from '@/types/cat'
+import type { ConflictItem } from '@/lib/conflictDetector'
+import { HEALTH_TAG_CONFIG } from '@/types/cat'
+import { ProductCard } from '@/components/result/ProductCard'
 import { getPets } from '@/lib/petLocalStore'
 import { generateInputHash, getCachedResultId, saveCacheMapping } from '@/lib/recommendLocalCache'
 import type { Pet } from '@/types/pet'
@@ -186,6 +192,28 @@ export default function RecommendPage() {
   // SSE 进度状态
   const [streamProgress, setStreamProgress] = useState('')
 
+  // 冲突纠偏状态（SSE conflicts 事件接收后更新）
+  const [streamConflicts, setStreamConflicts] = useState<ConflictItem[]>([])
+
+  // Phase3: 增量渲染状态
+  const [streamedDryItems, setStreamedDryItems] = useState<ProductRecommendation[]>([])
+  const [streamedWetItems, setStreamedWetItems] = useState<ProductRecommendation[]>([])
+  const [streamDone, setStreamDone] = useState(false)
+
+  // 将 SlimProductRecommendation hydrate 为完整 ProductRecommendation
+  function hydrateOneItem(slim: SlimProductRecommendation): ProductRecommendation | null {
+    const product = getProductById(slim.productId)
+    if (!product) return null
+    return {
+      product,
+      rank: slim.rank,
+      reason: product.reason,
+      highlights: slim.highlights,
+      warnings: slim.warnings,
+      feedingGuide: slim.feedingGuide,
+    }
+  }
+
   // 提交推荐（SSE 流式版）
   async function handleSubmit() {
     // 提交前追加健康需求到 localStorage
@@ -229,6 +257,10 @@ export default function RecommendPage() {
     // 未命中缓存，调用 SSE 流式 API
     setStep(3)
     setStreamProgress('正在连接...')
+    setStreamedDryItems([])
+    setStreamedWetItems([])
+    setStreamDone(false)
+    setStreamConflicts([])
 
     try {
       const res = await fetch('/api/recommend', {
@@ -243,6 +275,7 @@ export default function RecommendPage() {
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let itemCount = 0  // 用于进度计数（避免 state 闭包问题）
 
       // eslint-disable-next-line no-constant-condition
       while (true) {
@@ -266,12 +299,39 @@ export default function RecommendPage() {
 
               if (currentEvent === 'progress') {
                 setStreamProgress(data.message ?? '')
+              } else if (currentEvent === 'conflicts') {
+                // 冲突纠偏事件：立即展示提示
+                setStreamConflicts(data.conflicts ?? [])
+              } else if (currentEvent === 'dry-item') {
+                // Phase3: 收到单条主粮推荐，hydrate 后增量渲染
+                const slim = data as SlimProductRecommendation
+                const full = hydrateOneItem(slim)
+                if (full) {
+                  setStreamedDryItems(prev => [...prev, full])
+                  itemCount++
+                  // 仅内部计数，不更新进度文案（界面始终显示轮播文案）
+                }
+              } else if (currentEvent === 'wet-item') {
+                // Phase3: 收到单条罐头推荐，hydrate 后增量渲染
+                const slim = data as SlimProductRecommendation
+                const full = hydrateOneItem(slim)
+                if (full) {
+                  setStreamedWetItems(prev => [...prev, full])
+                  itemCount++
+                  // 仅内部计数，不更新进度文案（界面始终显示轮播文案）
+                }
               } else if (currentEvent === 'result') {
-                // 收到完整推荐结果，存储并跳转
+                // Phase3: 收到最终完整结果，存储 + 跳转
+                const slimResult = data as SlimRecommendResult
+                const fullResult = hydrateSlimResult(slimResult)
                 const resultId = generateResultId()
-                localStorage.setItem(`result_${resultId}`, JSON.stringify(data))
+                // 注入 id 字段，确保后端保存接口校验通过
+                fullResult.id = resultId
+                localStorage.setItem(`result_${resultId}`, JSON.stringify(fullResult))
                 saveCacheMapping(inputHash, resultId)
-                router.push(`/result/${resultId}`)
+                setStreamDone(true)
+                // 短暂延迟让用户看到完整结果后跳转
+                setTimeout(() => router.push(`/result/${resultId}`), 1500)
                 return
               } else if (currentEvent === 'error') {
                 throw new Error(data.message ?? '生成失败，请重试')
@@ -627,9 +687,82 @@ export default function RecommendPage() {
           </div>
         )}
 
-        {/* ── Step 3：Loading ── */}
+        {/* ── Step 3：Loading + 增量渲染 ── */}
         {!initializing && step === 3 && (
-          <LoadingState catName={form.name || '你的猫'} streamProgress={streamProgress} />
+          <div className="space-y-6">
+            <LoadingState catName={form.name || '你的猫'} streamProgress={streamProgress} />
+
+            {/* 冲突纠偏提示：SSE conflicts 事件到达后立即显示 */}
+            {streamConflicts.length > 0 && (
+              <div className="animate-slide-up space-y-3">
+                {streamConflicts.map((conflict, idx) => (
+                  <div key={idx} className="bg-blue-50 border border-blue-200 rounded-2xl p-5">
+                    <div className="flex gap-3">
+                      <span className="text-blue-500 text-xl shrink-0">🔍</span>
+                      <div>
+                        <p className="text-[14px] font-semibold text-blue-800 mb-1">营养方案已为您调整</p>
+                        <p className="text-[13px] text-blue-700 leading-relaxed">{conflict.message}</p>
+                        {conflict.correctedTag && (
+                          <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                            <span className="text-[12px] text-blue-600 bg-blue-100 line-through px-2.5 py-1 rounded-full">
+                              {HEALTH_TAG_CONFIG[conflict.originalTag]?.emoji} {HEALTH_TAG_CONFIG[conflict.originalTag]?.label}
+                            </span>
+                            <span className="text-blue-400 text-[12px]">→</span>
+                            <span className="text-[12px] text-blue-800 bg-blue-200 font-medium px-2.5 py-1 rounded-full">
+                              {HEALTH_TAG_CONFIG[conflict.correctedTag]?.emoji} {HEALTH_TAG_CONFIG[conflict.correctedTag]?.label}
+                            </span>
+                          </div>
+                        )}
+                        {!conflict.correctedTag && (
+                          <div className="mt-2.5">
+                            <span className="text-[12px] text-blue-600 bg-blue-100 line-through px-2.5 py-1 rounded-full">
+                              {HEALTH_TAG_CONFIG[conflict.originalTag]?.emoji} {HEALTH_TAG_CONFIG[conflict.originalTag]?.label}（已移除）
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Phase3: 增量渲染已到达的推荐卡片 */}
+            {streamedDryItems.length > 0 && (
+              <div className="animate-slide-up space-y-3">
+                <h3 className="text-[15px] font-semibold text-[#1A1815] flex items-center gap-2">
+                  🥣 主粮推荐
+                  <span className="text-[12px] font-normal text-[#A8A49C]">已找到 {streamedDryItems.length} 款</span>
+                </h3>
+                {streamedDryItems.map((item, idx) => (
+                  <div key={item.product.id || idx} className="animate-slide-up">
+                    <ProductCard recommendation={item} isTop={idx === 0} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {streamedWetItems.length > 0 && (
+              <div className="animate-slide-up space-y-3">
+                <h3 className="text-[15px] font-semibold text-[#1A1815] flex items-center gap-2">
+                  🥫 湿粮/罐头推荐
+                  <span className="text-[12px] font-normal text-[#A8A49C]">已找到 {streamedWetItems.length} 款</span>
+                </h3>
+                {streamedWetItems.map((item, idx) => (
+                  <div key={item.product.id || idx} className="animate-slide-up">
+                    <ProductCard recommendation={item} isTop={idx === 0} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 全部完成提示 */}
+            {streamDone && (
+              <div className="animate-slide-up text-center py-4">
+                <p className="text-[14px] text-[#78746C]">✅ 推荐生成完毕，正在跳转完整结果页...</p>
+              </div>
+            )}
+          </div>
         )}
       </main>
     </div>
