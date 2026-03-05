@@ -517,18 +517,25 @@ export default function RecommendPage() {
   const maxDay = tempDate.year === currentYear && tempDate.month === currentMonth ? currentDay : daysInMonth
   const dayOptions = Array.from({ length: maxDay }, (_, i) => ({ value: i + 1, label: `${i + 1}` }))
 
-  // 体重：临时状态
-  const [tempWeight, setTempWeight] = useState(4.5)
+  // 体重：临时状态（string 支持空态，允许用户完全删除后重新输入）
+  const [tempWeight, setTempWeight] = useState<string>('')
   useEffect(() => {
     if (activePicker === 'weight') {
-      setTempWeight(form.weightKg ? parseFloat(form.weightKg) : 4.5)
+      setTempWeight(form.weightKg ? parseFloat(form.weightKg).toFixed(1) : '')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePicker])
   const handleConfirmWeight = () => {
-    updateForm('weightKg', tempWeight.toFixed(1))
+    const parsed = parseFloat(tempWeight)
+    if (!isNaN(parsed) && parsed >= 0.5 && parsed <= 30) {
+      updateForm('weightKg', parsed.toFixed(1))
+    }
+    // 全部删除（空态）则不写入，保留上次值或保持为空
     setActivePicker('none')
   }
+  // slider 显示用：空态回退到 5 作为拖动初始点
+  const tempWeightNum = parseFloat(tempWeight)
+  const sliderValue = isNaN(tempWeightNum) ? 5 : Math.min(20, Math.max(0, tempWeightNum))
 
   // 品种搜索
   const [breedSearch, setBreedSearch] = useState('')
@@ -935,14 +942,23 @@ export default function RecommendPage() {
                 type="number"
                 value={tempWeight}
                 onChange={(e) => {
-                  const v = parseFloat(e.target.value)
-                  if (!isNaN(v)) setTempWeight(Math.min(30, Math.max(0.5, v)))
+                  // 允许空态：用户删除全部时保持空字符串，方便重新输入
+                  const raw = e.target.value
+                  if (raw === '' || raw === '-') {
+                    setTempWeight('')
+                    return
+                  }
+                  const v = parseFloat(raw)
+                  if (!isNaN(v)) {
+                    setTempWeight(String(Math.min(20, Math.max(0, v))))
+                  }
                 }}
                 step="0.1"
-                min="0.5"
-                max="30"
+                min="0"
+                max="20"
+                placeholder="--"
                 style={{ fontSize: '44px', fontWeight: 700 }}
-                className="w-32 text-center bg-transparent outline-none border-b-2 border-orange-200 focus:border-[#E8721A] transition-colors pb-1 text-gray-900"
+                className="w-32 text-center bg-transparent outline-none border-b-2 border-orange-200 focus:border-[#E8721A] transition-colors pb-1 text-gray-900 placeholder:text-gray-300"
               />
               <span className="text-[18px] text-gray-500 ml-2 font-medium">kg</span>
             </div>
@@ -950,20 +966,22 @@ export default function RecommendPage() {
             <div className="w-full px-2">
               <input
                 type="range"
-                min="0.5"
-                max="30"
+                min="0"
+                max="20"
                 step="0.1"
-                value={tempWeight}
-                onChange={(e) => setTempWeight(parseFloat(e.target.value))}
+                value={sliderValue}
+                onChange={(e) => setTempWeight(e.target.value)}
                 className="w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-[#E8721A]"
                 style={{
-                  background: `linear-gradient(to right, #E8721A ${((tempWeight - 0.5) / 29.5) * 100}%, #e5e7eb ${((tempWeight - 0.5) / 29.5) * 100}%)`
+                  background: `linear-gradient(to right, #E8721A ${(sliderValue / 20) * 100}%, #e5e7eb ${(sliderValue / 20) * 100}%)`
                 }}
               />
               <div className="flex justify-between text-[12px] text-gray-400 mt-3 font-medium">
-                <span>0.5 kg</span>
+                <span>0</span>
+                <span>5 kg</span>
+                <span>10 kg</span>
                 <span>15 kg</span>
-                <span>30 kg</span>
+                <span>20 kg</span>
               </div>
             </div>
           </div>
@@ -1020,28 +1038,21 @@ export default function RecommendPage() {
               />
             </div>
 
-            {/* 已选摘要 */}
-            {healthTags.length > 0 && (
-              <div className="bg-[#FFF8F3] rounded-xl p-4 border border-[#FFD9B5]">
-                <p className="text-[13px] text-[#78746C] mb-2">已选择 {healthTags.length} 项需求：</p>
+            {/* 已选摘要卡（始终显示，对齐 Figma） */}
+            <div className="bg-white border border-orange-100 rounded-xl p-4">
+              <div className="text-[13px] text-gray-600 mb-3">已选择 {healthTags.length} 项需求：</div>
+              {healthTags.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {healthTags.map((tag) => (
-                    <span key={tag} className="bg-white border border-[#FFB87A] text-[#9A4208] rounded-full px-3 py-1 text-[12px]">
-                      {tag === 'urinary' ? '泌尿道健康' :
-                       tag === 'weight' ? '体重管理' :
-                       tag === 'digest' ? '消化敏感' :
-                       tag === 'skin' ? '皮毛养护' :
-                       tag === 'joint' ? '关节健康' :
-                       tag === 'picky' ? '挑食猫咪' :
-                       tag === 'allergy' ? '过敏体质' :
-                       tag === 'nutrition' ? '增重/营养' :
-                       tag === 'senior' ? '老年猫护理' :
-                       tag === 'kitten' ? '幼猫发育' : '日常均衡'}
+                    <span key={tag} className="px-3 py-1.5 bg-white border border-orange-200 text-orange-600 rounded-full text-[12px] font-medium">
+                      {HEALTH_TAG_CONFIG[tag]?.label ?? tag}
                     </span>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="text-[13px] text-gray-400 italic">尚未选择任何需求</div>
+              )}
+            </div>
 
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-[14px] text-red-600">

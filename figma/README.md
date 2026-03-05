@@ -1,7 +1,7 @@
 
-  # Mobile UI Redesign
+  # Untitled
 
-  This is a code bundle for Mobile UI Redesign. The original project is available at https://www.figma.com/design/SR2MGRZANymVFFKXgwqypF/Mobile-UI-Redesign.
+  This is a code bundle for Untitled. The original project is available at https://www.figma.com/design/SR2MGRZANymVFFKXgwqypF/Untitled.
 
   ## Running the code
 
