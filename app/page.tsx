@@ -95,13 +95,13 @@ export default function HomePage() {
             <div className="text-[13px] font-semibold uppercase tracking-wide text-[#A8A49C] mb-4">
               简单三步
             </div>
-            <div className="flex items-start gap-3">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 sm:gap-3">
               {[
                 { icon: '📋', title: '填写信息', desc: '品种、年龄、体重' },
                 { icon: '🏷️', title: '选择需求', desc: '泌尿道、减重等' },
                 { icon: '✨', title: '获取方案', desc: 'AI 生成专属推荐' },
               ].map((step, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center text-center gap-2">
+                <div key={i} className="flex flex-row sm:flex-col items-center sm:text-center gap-3 sm:gap-2">
                   <div className="text-3xl">{step.icon}</div>
                   <div className="text-[14px] font-semibold text-[#2E2B27]">{step.title}</div>
                   <div className="text-[11px] text-[#A8A49C]">{step.desc}</div>

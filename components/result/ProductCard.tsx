@@ -100,7 +100,8 @@ export function ProductCard({
       )}
 
       <div className="p-4">
-        <div className="flex gap-4">
+        {/* Mobile: 图片+标题并排；sm+: 全部横排 */}
+        <div className="flex flex-col sm:flex-row gap-4">
           {/* 产品图片 */}
           <div className="w-14 h-14 bg-[#F4F3F0] rounded-xl flex items-center justify-center shrink-0 mt-1">
             <span className="text-3xl">{product.type === 'dry' ? '🐟' : '🥫'}</span>
@@ -108,6 +109,7 @@ export function ProductCard({
 
           {/* 主要信息 */}
           <div className="flex-1 min-w-0">
+            {/* 标题行：mobile 下标题独占，sm+ 标题+价格并排 */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-[#A8A49C] mb-0.5">
@@ -123,8 +125,8 @@ export function ProductCard({
                 </h3>
               </div>
 
-              {/* 价格 */}
-              <div className="text-right shrink-0">
+              {/* 价格：sm+ 显示在标题右侧 */}
+              <div className="hidden sm:block text-right shrink-0">
                 <div className="flex items-baseline gap-0.5 justify-end">
                   <span className="text-[22px] font-bold font-mono text-[#2E2B27]">
                     {formatPrice(product).split('/')[0]}
@@ -139,6 +141,23 @@ export function ProductCard({
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* 价格：mobile 下显示在标题下方，与月均消费同行 */}
+            <div className="flex sm:hidden items-baseline gap-3 mt-1.5">
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-[20px] font-bold font-mono text-[#2E2B27]">
+                  {formatPrice(product).split('/')[0]}
+                </span>
+                <span className="text-[12px] text-[#A8A49C]">
+                  /{product.priceUnit === 'per_kg' ? 'kg' : '罐'}
+                </span>
+              </div>
+              {product.type === 'dry' && (
+                <span className="text-[11px] text-[#A8A49C]">
+                  {estimateMonthlyDryCost(product)}
+                </span>
+              )}
             </div>
 
             {/* 推荐理由（精简，限 2 行） */}

@@ -76,7 +76,7 @@ export function LoginModal({ onSuccess, onSwitchToSignup, onClose }: LoginModalP
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* 弹窗主体 */}
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-8 relative animate-slide-up">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-6 md:p-8 relative animate-slide-up">
         {/* 关闭按钮 */}
         <button
           onClick={onClose}

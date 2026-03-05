@@ -251,7 +251,7 @@ export default function ResultPage() {
   if (notFound) {
     return (
       <div className="min-h-screen bg-[#FFF8F3] flex items-center justify-center px-4">
-        <div className="bg-white rounded-3xl shadow-xl max-w-[440px] w-full p-10 text-center space-y-5">
+        <div className="bg-white rounded-3xl shadow-xl max-w-[440px] w-full p-6 md:p-10 text-center space-y-5">
           <div className="text-5xl">🐱</div>
           <div>
             <h2 className="text-[20px] font-bold text-[#1A1815]">推荐结果已过期</h2>

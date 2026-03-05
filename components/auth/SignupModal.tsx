@@ -69,7 +69,7 @@ export function SignupModal({ onSuccess, onSwitchToLogin, onClose }: SignupModal
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       {/* 弹窗主体：SignupModal 字段较多，加 my-8 保证小屏可滚动 */}
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-8 relative animate-slide-up my-8">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[420px] p-6 md:p-8 relative animate-slide-up my-8">
         {/* 关闭按钮 */}
         <button
           onClick={onClose}

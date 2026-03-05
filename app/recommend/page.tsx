@@ -392,7 +392,7 @@ export default function RecommendPage() {
         {!initializing && step === 0 && (savedPets.length > 0 || lastSession) && (
           <div className="animate-slide-up space-y-5">
             <div>
-              <h1 className="text-[28px] font-bold text-[#1A1815]">
+              <h1 className="text-[22px] md:text-[28px] font-bold text-[#1A1815]">
                 {savedPets.length > 0 ? '为哪只猫咪生成推荐？' : '继续上次的推荐？'}
               </h1>
               <p className="text-[14px] text-[#78746C] mt-2">选择已有档案，直接跳到健康需求选择</p>
@@ -489,7 +489,7 @@ export default function RecommendPage() {
             )}
 
             <div>
-              <h1 className="text-[28px] font-bold text-[#1A1815]">告诉我们，你的猫叫什么？</h1>
+              <h1 className="text-[22px] md:text-[28px] font-bold text-[#1A1815]">告诉我们，你的猫叫什么？</h1>
               <p className="text-[14px] text-[#78746C] mt-2">信息越准确，推荐越精准</p>
             </div>
 
@@ -502,7 +502,7 @@ export default function RecommendPage() {
                 placeholder="例如：奶茶、橘墩、球球"
                 maxLength={20}
                 className={[
-                  'w-full text-center text-[28px] font-bold bg-white border-2 rounded-xl px-6 py-4',
+                  'w-full text-center text-[22px] md:text-[28px] font-bold bg-white border-2 rounded-xl px-6 py-4',
                   'placeholder:text-[#D1CEC7] placeholder:font-normal placeholder:text-[22px]',
                   'outline-none transition-all duration-200',
                   form.name
@@ -609,7 +609,7 @@ export default function RecommendPage() {
             </div>
 
             <div>
-              <h1 className="text-[28px] font-bold text-[#1A1815]">
+              <h1 className="text-[22px] md:text-[28px] font-bold text-[#1A1815]">
                 {form.name || '它'}有哪些健康需求？
               </h1>
               <p className="text-[14px] text-[#78746C] mt-2">可多选，选"日常均衡"代表无特殊需求</p>
