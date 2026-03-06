@@ -24,6 +24,7 @@ export interface UseAuthReturn {
 // localStorage key 常量
 const USER_KEY = 'user'
 const TOKEN_KEY = 'sessionToken'
+const CREDENTIALS_KEY = 'nutrapaw_user_auth'
 
 /**
  * useAuth —— 集中管理登录态
@@ -63,6 +64,7 @@ export function useAuth(): UseAuthReturn {
     try {
       localStorage.removeItem(USER_KEY)
       localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(CREDENTIALS_KEY)
     } catch { /* ignore */ }
     setUser(null)
     setSessionToken(null)

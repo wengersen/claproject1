@@ -1,50 +1,30 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { LoginModal } from './LoginModal'
 import { SignupModal } from './SignupModal'
+import { useAuth } from '@/hooks/useAuth'
 import type { AuthResponse } from '@/types/auth'
-
-interface StoredUser {
-  username: string
-  nickname?: string
-}
 
 /**
  * 全站导航认证区（PRD §14）
  * 未登录：单按钮"登录/注册"，默认打开登录弹窗
  * 已登录：用户名（→ /profile）+ 退出按钮
- * mounted 状态防 SSR/CSR 水合不一致
+ * 使用 useAuth hook 统一管理状态，与其他页面保持一致
  */
 export function AuthNav() {
-  const [user, setUser] = useState<StoredUser | null>(null)
+  const { user, login, logout, initialized } = useAuth()
   const [modal, setModal] = useState<'login' | 'signup' | null>(null)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-    const raw = localStorage.getItem('user')
-    if (raw) {
-      try { setUser(JSON.parse(raw)) } catch { /* ignore */ }
-    }
-  }, [])
-
-  function handleLogout() {
-    localStorage.removeItem('sessionToken')
-    localStorage.removeItem('user')
-    setUser(null)
-  }
 
   function handleAuthSuccess(res: AuthResponse) {
-    localStorage.setItem('sessionToken', res.sessionToken)
-    localStorage.setItem('user', JSON.stringify(res.user))
-    setUser(res.user)
+    const { username, nickname, email } = res.user
+    login({ username, nickname, email }, res.sessionToken)
     setModal(null)
   }
 
   // SSR 占位，避免服务端/客户端渲染不一致
-  if (!mounted) return <div className="w-24 h-8" />
+  if (!initialized) return <div className="w-24 h-8" />
 
   if (user) {
     return (
@@ -61,7 +41,7 @@ export function AuthNav() {
           </span>
         </Link>
         <button
-          onClick={handleLogout}
+          onClick={logout}
           className="px-2 py-1.5 rounded-lg text-[13px] text-[#A8A49C] hover:text-[#E8721A] transition-colors"
         >
           退出

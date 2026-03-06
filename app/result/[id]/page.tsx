@@ -121,7 +121,7 @@ export default function ResultPage() {
     if (savedUser && sessionToken) {
       doSaveRecommendation(sessionToken)
     } else {
-      setAuthModal('signup')
+      setAuthModal('login')
     }
   }
 
@@ -296,7 +296,7 @@ export default function ResultPage() {
             🐾 NutraPaw
           </Link>
           <div className="flex items-center gap-2">
-            {savedUser && (
+            {savedUser ? (
               <>
                 <Link
                   href="/profile"
@@ -311,6 +311,13 @@ export default function ResultPage() {
                   退出
                 </button>
               </>
+            ) : (
+              <button
+                onClick={() => setAuthModal('login')}
+                className="px-3 py-1.5 rounded-lg text-[13px] font-medium border border-[#E8721A] text-[#E8721A] hover:bg-[#E8721A] hover:text-white transition-all duration-150"
+              >
+                登录/注册
+              </button>
             )}
             <Link
               href="/recommend"
@@ -386,8 +393,24 @@ export default function ResultPage() {
                 {saveStatus === 'error' && '保存失败'}
                 {saveStatus === 'idle' && '💾 保存推荐'}
               </button>
+              {/* 未登录时同时显示登录和注册两个入口 */}
               {!savedUser && saveStatus === 'idle' && (
-                <p className="text-[11px] text-[#A8A49C] mt-1.5">注册后永久保存</p>
+                <div className="mt-2 flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setAuthModal('login')}
+                    className="text-[12px] text-[#E8721A] font-medium hover:underline"
+                  >
+                    登录
+                  </button>
+                  <span className="text-[11px] text-[#D1CEC7]">|</span>
+                  <button
+                    onClick={() => setAuthModal('signup')}
+                    className="text-[12px] text-[#A8A49C] hover:text-[#78746C] hover:underline"
+                  >
+                    注册
+                  </button>
+                  <span className="text-[11px] text-[#A8A49C]">后永久保存</span>
+                </div>
               )}
             </div>
           </div>

@@ -68,8 +68,6 @@ export async function POST(req: NextRequest) {
       },
       sessionToken,
       expiresIn,
-      // 返回 passwordHash 供客户端存入 localStorage，实现跨 Vercel Redeploy 免重注册
-      passwordHash: user.passwordHash,
     }
 
     return NextResponse.json(response)

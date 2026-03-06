@@ -10,6 +10,25 @@ interface SignupModalProps {
   onClose: () => void
 }
 
+/** 简单密码强度：返回 0=弱 1=中 2=强 */
+function getPasswordStrength(pwd: string): 0 | 1 | 2 {
+  if (pwd.length < 6) return 0
+  const hasUpper = /[A-Z]/.test(pwd)
+  const hasLower = /[a-z]/.test(pwd)
+  const hasDigit = /[0-9]/.test(pwd)
+  const hasSpecial = /[^A-Za-z0-9]/.test(pwd)
+  const score = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length
+  if (pwd.length >= 10 && score >= 3) return 2
+  if (pwd.length >= 6 && score >= 2) return 1
+  return 0
+}
+
+const STRENGTH_CONFIG = [
+  { label: '弱', color: 'bg-red-400', text: 'text-red-500' },
+  { label: '中', color: 'bg-amber-400', text: 'text-amber-500' },
+  { label: '强', color: 'bg-green-500', text: 'text-green-600' },
+] as const
+
 export function SignupModal({ onSuccess, onSwitchToLogin, onClose }: SignupModalProps) {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -37,23 +56,7 @@ export function SignupModal({ onSuccess, onSwitchToLogin, onClose }: SignupModal
         return
       }
 
-      // 保存 sessionToken + user 到 localStorage
-      localStorage.setItem('sessionToken', data.sessionToken)
-      localStorage.setItem('user', JSON.stringify(data.user))
-
-      // 保存凭证到 localStorage（用于跨 Vercel Redeploy 免重注册）
-      // clientHash 下次登录时传给服务端做 bcrypt.compare，无需服务端 Map
-      if (data.passwordHash) {
-        localStorage.setItem('nutrapaw_user_auth', JSON.stringify({
-          id: data.user.id,
-          username: data.user.username,
-          email: data.user.email,
-          nickname: data.user.nickname ?? data.user.username,
-          passwordHash: data.passwordHash,
-          createdAt: data.user.createdAt,
-        }))
-      }
-
+      // 注册成功后由父组件的 onSuccess → useAuth.login 统一写入 localStorage
       onSuccess(data as AuthResponse)
     } catch {
       setError('网络错误，请检查连接后重试')
@@ -122,7 +125,7 @@ export function SignupModal({ onSuccess, onSwitchToLogin, onClose }: SignupModal
             />
           </div>
 
-          {/* 密码 */}
+          {/* 密码 + 实时强度提示 */}
           <div>
             <label className="block text-[13px] font-semibold text-[#4A4641] mb-1.5">
               密码 <span className="text-[#E8721A]">*</span>
@@ -137,6 +140,28 @@ export function SignupModal({ onSuccess, onSwitchToLogin, onClose }: SignupModal
               minLength={6}
               disabled={loading}
             />
+            {/* 密码强度指示器（仅有内容时显示） */}
+            {password.length > 0 && (() => {
+              const strength = getPasswordStrength(password)
+              const cfg = STRENGTH_CONFIG[strength]
+              return (
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="flex gap-1 flex-1">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className={`h-1.5 flex-1 rounded-full transition-all duration-200 ${
+                          i <= strength ? cfg.color : 'bg-[#E8E6E1]'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <span className={`text-[12px] font-medium shrink-0 ${cfg.text}`}>
+                    {cfg.label}
+                  </span>
+                </div>
+              )
+            })()}
           </div>
 
           {/* 昵称（可选） */}

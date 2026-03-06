@@ -557,12 +557,16 @@ export default function RecommendPage() {
     <div className="min-h-screen bg-[#FFF8F3]">
       {/* 顶部导航 */}
       <header className="sticky top-0 z-50 bg-[#FFF8F3]/90 backdrop-blur-md border-b border-[#E8E6E1]">
-        <div className="max-w-[640px] mx-auto px-4 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-[#E8721A] font-bold text-[18px]">
+        <div className="max-w-[640px] mx-auto px-4 h-16 flex items-center justify-between gap-2">
+          <Link href="/" className="flex items-center gap-2 text-[#E8721A] font-bold text-[18px] shrink-0">
             🐾 NutraPaw
           </Link>
-          <div className="flex items-center gap-3">
+          {/* 步骤条居中，flex-1 撑满中间空间 */}
+          <div className="flex-1 flex justify-center overflow-hidden">
             {step > 0 && <ProgressSteps steps={STEPS} currentStep={step} />}
+          </div>
+          {/* 登录区固定右侧，shrink-0 防止被压缩 */}
+          <div className="shrink-0">
             <AuthNav />
           </div>
         </div>
